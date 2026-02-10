@@ -1,97 +1,148 @@
 # Current Workflow Map
 
-이 문서는 "지금 실제로 돌아가는 흐름"과 "아직 연결/구현이 남은 흐름"을 분리해 설명합니다.  
-대상 독자: 사용자(실행 관점) + 개발자(구조/연결 관점).
+이 문서는 2026-02-10 기준 `main` 코드와 `docs/steps/step-17~21.md` 계획을 함께 반영한다.  
+목표는 "현재 실행 경로"와 "다음 구현 경로"를 혼동하지 않게 정리하는 것이다.
 
-## 1) 구현된 작업 흐름 (실행 가능)
+## 1) 정합성 점검 요약 (코드 vs 단계 계획)
 
-아래 플로우는 현재 저장소에서 실제로 실행 가능한 경로입니다.
+- 현재 실제 실행의 중심은 CLI/스크립트 경로다.
+  - `sync-options` / `sync-metadata` / `simulate-candidates` / `evaluate-results`
+- 메타데이터 동기화 + 시뮬/평가 엔진은 동작 중이다.
+  - 메타 인덱스/진행 파일: `data/meta/*`
+  - 결과/레코드셋: `data/simulation_results/*`, `data/recordsets/*`
+  - DB: `data/brain_agent.db`
+- 이벤트 로그는 이미 존재하지만 범위가 제한적이다.
+  - 항상 기록: `simulation_skipped_duplicate`, `simulation_completed`
+  - `BrainPipeline` 경로에서만 기록: `metadata_sync`, `cycle_completed`
+- step-17~21에서 정의한 LLM 오케스트레이션/예산 게이트/validation loop/프론트 실시간 스트림은 "계약은 문서화됨, 코드 본체는 구현 예정" 상태다.
 
-- 사용자 입력이 필요한 지점:
-  - `scripts/setup_credentials.sh` 실행 시 계정 입력
-  - 계정 정책에 따라 biometrics 인증이 필요할 수 있음
-- 그 외는 스크립트/CLI로 자동 처리됨
-- 핵심 저장 위치:
-  - 메타데이터: `data/meta/*`
-  - 로컬 DB: `data/brain_agent.db`
-  - 시뮬 결과/레코드셋: `data/simulation_results/*`, `data/recordsets/*`
+## 2) 현재 실행 가능 흐름 (CLI 중심, 단순 직렬 + 저장/로그 레인)
+
+- 사용자 수동 개입:
+  - `scripts/setup_credentials.sh` (계정 입력)
+  - 계정 정책에 따라 biometrics 인증
+- 나머지는 배치 실행 가능
 
 ```mermaid
 flowchart TD
-  U["'사용자'가 실행 시작"] --> ENV["'환경 준비': .venv + requirements 설치"]
-  ENV --> CRED["'크리덴셜 저장': scripts/setup_credentials.sh"]
-  CRED --> CREDFILE["'~/.brain_credentials' 생성 (권한 600)"]
+  subgraph EXEC["Execution Lane (현재 실행 가능)"]
+    U["사용자 실행 시작"] --> OPT["sync-options"]
+    OPT --> META["sync-metadata"]
+    META --> CAND["후보 JSON 준비 (수동/템플릿)"]
+    CAND --> VAL["validate-expression (선택)"]
+    CAND --> SIM["simulate-candidates"]
+    VAL --> SIM
+    SIM --> DEDUP{"fingerprint 중복?"}
+    DEDUP -->|yes| SKIP["중복 스킵"]
+    DEDUP -->|no| RUNSIM["POST /simulations + polling"]
+    RUNSIM --> FETCH["alpha 상세 + recordsets 수집"]
+    FETCH --> EVAL["evaluate-results"]
+    EVAL --> OUT["운영 출력/선별"]
+  end
 
-  CREDFILE --> OPT["'옵션 동기화': scripts/sync_options.sh"]
-  OPT --> OPTSAVE["'OPTIONS /simulations' 저장 -> data/meta + SQLite"]
+  subgraph STORE["Storage Lane (현재)"]
+    OPT --> M1["simulation options 저장"]
+    META --> M2["operators/datasets/data-fields + index 저장"]
+    SIM --> DB1["SQLite: fingerprints/alpha_results/event_log"]
+    FETCH --> F1["recordsets 파일 저장"]
+    EVAL --> F2["scorecards 파일 저장"]
+  end
 
-  OPTSAVE --> META["'메타 동기화': scripts/sync_metadata.sh"]
-  META --> METASAVE["'/operators', '/data-sets', '/data-fields' 저장"]
-
-  METASAVE --> CAND["'후보 알파 준비': JSON 파일(수동/템플릿)"]
-  CAND --> VAL["'정적 검증': scripts/validate_expression.sh"]
-  VAL --> SIM["'시뮬 실행': scripts/simulate_candidates.sh"]
-
-  SIM --> DEDUP["'중복 검사': fingerprint 비교 후 스킵/진행"]
-  DEDUP --> POSTSIM["'POST /simulations' + 'Retry-After' 폴링"]
-  POSTSIM --> ALPHA["'alpha_id' 및 상세/recordsets 수집"]
-
-  ALPHA --> EVAL["'평가/랭킹': scripts/evaluate_results.sh"]
-  EVAL --> SCORE["'ScoreCard' 생성 (Sharpe/Fitness/Turnover/상관)"]
-
-  SCORE --> DIVOPT["'선택': scripts/diversity_snapshot.sh"]
-  DIVOPT --> OUT["'운영 출력': 통과 후보/로그/DB 누적"]
+  subgraph OBSNOW["Telemetry Lane (현재 최소)"]
+    SKIP --> E1["simulation_skipped_duplicate"]
+    RUNSIM --> E2["simulation_completed"]
+    PIPE["(선택) BrainPipeline.run_*"] --> E3["metadata_sync / cycle_completed"]
+  end
 ```
 
-### 구현된 흐름에서 사용자가 체감하는 실행 순서
+### 현재 사용자가 체감하는 기본 실행 순서
 
-1. `bash scripts/setup_credentials.sh`  
-2. `PYTHONPATH=src bash scripts/sync_options.sh`  
-3. `PYTHONPATH=src bash scripts/sync_metadata.sh --region USA --delay 1 --universe TOP3000`  
-4. 후보 JSON 준비 후 `PYTHONPATH=src bash scripts/simulate_candidates.sh <input.json>`  
+1. `bash scripts/setup_credentials.sh`
+2. `PYTHONPATH=src bash scripts/sync_options.sh`
+3. `PYTHONPATH=src bash scripts/sync_metadata.sh --region USA --delay 1 --universe TOP3000`
+4. 후보 JSON 준비 후 `PYTHONPATH=src bash scripts/simulate_candidates.sh <input.json>`
 5. `PYTHONPATH=src bash scripts/evaluate_results.sh <result.json>`
 
----
+## 3) Step-17~21 확장 흐름 (구현 예정, 계약 고정됨)
 
-## 2) 미구현/부분구현 작업 흐름 (현재는 완전 자동 아님)
-
-아래 플로우는 "모듈은 있거나 설계는 되어 있지만", 완전 자동 E2E로는 아직 미연결/미완성인 부분입니다.
-
-- 아이디어 수집 -> LLM 생성 -> retrieval 결합 -> 자동 재작성 루프: 부분구현
-- 피드백 변이 결과를 자동으로 다음 시뮬 배치에 지속 연결: 부분구현
-- 제출 전 정책 게이트 + 자동 submit 운영: 옵션 모듈만 존재
-- 운영 대시보드/모니터링 자동화: 최소 스크립트 수준, 제품 수준 대시보드는 미구현
+핵심: 프론트엔드를 맨 마지막으로 미루지 않고, 생성/검증/예산/시뮬 파이프라인과 병렬로 관측 계약을 함께 고정한다.
 
 ```mermaid
 flowchart TD
-  I0["'미구현 시작점': 완전 자동 알파 생산 루프"] --> I1["'Idea Collector (LLM)' 자동 아이디어 생성"]
-  I1 --> I2["'Retrieval 결합': operators/fields Top-K 자동 주입"]
-  I2 --> I3["'FastExpr Builder (LLM)' JSON 강제 출력"]
+  subgraph PLAN_EXEC["Execution/Control Lane (구현 예정)"]
+    IDEA["Idea Researcher"] --> RPACK["Retrieval Pack (Top-K + visual_graph)"]
+    RPACK --> KPACK["Knowledge Pack (+ visual pack)"]
+    KPACK --> AMAKE["Alpha Maker"]
+    AMAKE --> PARSE["Parse/Schema Gate"]
+    PARSE --> V["Static Validator"]
+    V -->|fail| REPAIR["Repair Loop"]
+    REPAIR -->|반복 동일 오류| REXP["Retrieval Expansion"]
+    REXP --> AMAKE
+    V -->|pass| BUDGET["Budget Gate"]
+    BUDGET --> SQ["Simulation Queue"]
+    SQ --> SRUN["Simulation Runner"]
+    SRUN --> EV["Evaluator"]
+    EV --> MUT["Feedback Mutator"]
+    MUT --> AMAKE
+  end
 
-  I3 --> I4["'Static Validator' 통과 여부 판단"]
-  I4 -->|실패| I5["'자동 Rewrite 루프' (에러 피드백 반영)"]
-  I5 --> I3
+  subgraph PLAN_OBS["Observability/UI Lane (F-Track, 구현 예정)"]
+    HUB["Event Bus + FastAPI WS"] --> NC["Neural Cosmos"]
+    HUB --> BT["Brain Terminal"]
+    HUB --> BC["Budget Console"]
+    HUB --> AR["Backtest Arena"]
+    HUB --> ET["Evolutionary Tree"]
+  end
 
-  I4 -->|통과| I6["'Multi-Simulation Batch' 자동 편성/실행"]
-  I6 --> I7["'Evaluator' 점수/상관/안정성 평가"]
-  I7 --> I8["'Feedback Mutator' 변이 생성"]
-  I8 --> I6
-
-  I7 --> I9["'Submit Gate' 정책/중복/다양성 체크"]
-  I9 --> I10["'Submit API' 자동 제출 + 상태 추적"]
-  I10 --> I11["'운영 대시보드' KPI/알림/리포트"]
+  RPACK --> HUB
+  AMAKE --> HUB
+  V --> HUB
+  BUDGET --> HUB
+  SRUN --> HUB
+  EV --> HUB
+  MUT --> HUB
 ```
 
-### 미구현/부분구현 포인트 요약
+## 4) 단계별 책임 경계 (architecture 관점)
 
-- `src/brain_agent/generation/prompting.py`는 "프롬프트/파서"만 있고, 실제 LLM 호출 오케스트레이션이 아직 없음
-- `src/brain_agent/agents/pipeline.py`는 파이프라인 뼈대이며, 현재 빌더는 안전 템플릿 중심
-- `src/brain_agent/brain_api/submit.py`는 옵션 래퍼이며, 운영 게이트와 완전 자동 submit 플로우는 미연결
-- `scripts/cron_pipeline.sh`는 최소 스케줄 샘플이며, 장애복구/알림/관측성은 확장 필요
+### step-17
+- retrieval pack + exploit/explore + `visual_graph` 계약 고정
+- retrieval 이벤트 스키마 정의
 
----
+### step-18
+- operator/settings/examples/counterexample + `fastexpr_visual_pack` 고정
+- validator 오류 분류와 연결 가능한 taxonomy 준비
 
-## 3) 상태 한 줄 정리
+### step-19
+- Idea Researcher / Alpha Maker 입출력 계약 고정
+- event bus + FastAPI WebSocket 브리지의 표준 이벤트 envelope 정의
 
-- "시뮬레이션 엔진 + 평가 엔진"은 실행 가능한 상태
-- "완전 자동 후보 생성/학습형 루프/제출 운영"은 다음 구현 단계
+### step-20
+- budget/fallback/coverage/novelty telemetry 계약 고정
+- 대시보드 API(`run` 단위 budget/kpi) 정의
+
+### step-21
+- validation-first + repair loop + simulation queue 진입 조건 강제
+- Arena/Evolutionary Tree 재구성 가능한 이벤트 순서 계약 확정
+
+## 5) 현재 기준 "구현됨 / 부분 / 예정" 체크
+
+### 구현됨
+- 메타데이터 동기화/인덱스 빌드 (`src/brain_agent/metadata/sync.py`, `src/brain_agent/metadata/organize.py`)
+- 정적 검증 (`src/brain_agent/validation/static_validator.py`)
+- 시뮬/중복 스킵/결과 저장 (`src/brain_agent/simulation/runner.py`)
+- 평가 및 기본 변이 로직 (`src/brain_agent/evaluation/evaluator.py`, `src/brain_agent/feedback/mutator.py`)
+
+### 부분구현
+- `BrainPipeline` 참조 오케스트레이터는 존재하나 기본 운영 경로는 아직 스크립트/CLI 중심 (`src/brain_agent/agents/pipeline.py`)
+- 이벤트 로그 저장은 있으나 표준화된 run/stage envelope와 WS 브로드캐스트는 미구현
+
+### 구현 예정
+- LLM 오케스트레이터, retrieval/knowledge/budget/validation-loop 신규 CLI
+- FastAPI + WebSocket 서버, Next.js 기반 실시간 UI
+- 이벤트명 마이그레이션(신규 dotted event + 기존 snake_case alias 병행)
+
+## 6) 상태 한 줄 정리
+
+- 현재: "메타 동기화 + 시뮬레이션 + 평가"는 안정적으로 실행 가능
+- 다음: "LLM 생성/수정 루프 + 비용 게이트 + 실시간 관측 UI"를 step-17~21 순서로 결합
