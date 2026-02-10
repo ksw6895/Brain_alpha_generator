@@ -7,6 +7,7 @@
 - 그러나 `data_fields` 전체를 LLM에 넣으면 비용/지연/환각이 폭발한다.
 - 따라서 LLM 입력은 반드시 "아이디어별 Top-K subset"으로 제한해야 한다.
 - step-17의 핵심 산출물은 `retrieval pack`(LLM 입력용 압축 컨텍스트)이다.
+- step-17에서 프론트엔드의 "Neural Cosmos(마인드맵/네트워크)" 데이터 계약도 함께 동결한다.
 - step-17이 끝나야 step-18~21의 생성/수정 루프를 안전하게 구현할 수 있다.
 - 단, 비용 절감 때문에 탐색력을 잃지 않도록 exploit/explore 이중 예산을 같이 설계해야 한다.
 
@@ -33,11 +34,22 @@
 3. Top-K budget 기본값 정의 (exploit/explore 분리)
 4. prompt에 full metadata 유입 차단 규칙 정의
 5. 반복 오류 시 retrieval 확장 트리거 정의
+6. 프론트 시각화용 retrieval graph(노드/엣지/lane) 계약 정의
+7. retrieval 단계 이벤트 스키마 정의 (`retrieval.*`)
 
 ### 2.2 하지 말아야 할 일
 - LLM 생성기 자체를 먼저 완성하려고 하지 않는다.
 - 비용 제어(예산 소진 정책)는 step-20에서 다룬다.
 - repair loop 자동화는 step-21에서 다룬다.
+
+### 2.3 프론트 동시 착수 범위 (F17: Neural Cosmos v0)
+- 목적: 유저가 "AI가 지금 어떤 데이터 필드/연산자를 수색 중인지"를 실시간으로 볼 수 있게 한다.
+- 최소 구현:
+  1. retrieval pack에 시각화용 그래프 데이터(`visual_graph`)를 포함
+  2. exploit/explore lane을 노드 단위로 태깅
+  3. 상태 컬러 의미를 계약으로 고정 (`searching`: 붉은 계열, `selected`: 푸른 계열, `dropped`: 회색 계열)
+- 주의: 3D 렌더링 구현은 프론트(Next.js) 책임이고, step-17에서는 그래프 데이터 계약만 고정한다.
+- 권장 렌더러: `react-force-graph` (2D/3D 공용 데이터 포맷 재사용 가능)
 
 ## 3) 입력/출력 계약
 ### 3.1 입력
@@ -48,18 +60,39 @@
 ### 3.2 출력: retrieval pack
 ```json
 {
+  "idea_id": "idea_20260210_001",
   "query": "earnings surprise mean reversion",
   "target": {"instrumentType": "EQUITY", "region": "USA", "universe": "TOP3000", "delay": 1},
   "selected_subcategories": ["analyst-analyst-estimates", "earnings-earnings-estimates"],
   "candidate_datasets": [{"id": "analyst15", "name": "Earnings forecasts"}],
   "candidate_fields": [{"id": "act_q_eps_surprisemean", "dataset_id": "analyst7", "type": "MATRIX"}],
   "candidate_operators": [{"name": "rank", "definition": "rank(x)", "scope": ["REGULAR"]}],
+  "lanes": {
+    "exploit": {"field_ids": ["act_q_eps_surprisemean"], "operator_names": ["rank"]},
+    "explore": {"field_ids": ["alt_field_001"], "operator_names": ["zscore"]}
+  },
+  "visual_graph": {
+    "version": "v1",
+    "nodes": [
+      {"id": "idea:idea_20260210_001", "type": "idea", "label": "earnings surprise mean reversion", "lane": "exploit", "state": "selected", "score": 1.0},
+      {"id": "subcategory:analyst-analyst-estimates", "type": "subcategory", "label": "analyst-estimates", "lane": "exploit", "state": "selected", "score": 0.88},
+      {"id": "field:act_q_eps_surprisemean", "type": "field", "label": "act_q_eps_surprisemean", "lane": "exploit", "state": "searching", "score": 0.91}
+    ],
+    "edges": [
+      {"source": "idea:idea_20260210_001", "target": "subcategory:analyst-analyst-estimates", "kind": "retrieval_match", "weight": 0.88},
+      {"source": "subcategory:analyst-analyst-estimates", "target": "field:act_q_eps_surprisemean", "kind": "contains_field", "weight": 0.91}
+    ]
+  },
   "token_estimate": {"input_chars": 12000, "input_tokens_rough": 3500},
   "budget_policy": {"exploit_ratio": 0.7, "explore_ratio": 0.3},
   "expansion_policy": {
     "enabled": true,
     "trigger_on_repeated_validation_error": 2,
     "topk_expand_factor": 1.5
+  },
+  "telemetry": {
+    "retrieval_ms": 183,
+    "candidate_counts": {"subcategories": 5, "datasets": 16, "fields": 62, "operators": 48}
   }
 }
 ```
@@ -71,10 +104,22 @@
 - 신규: `src/brain_agent/retrieval/pack_builder.py`
 - 수정: `src/brain_agent/cli.py`
   - `build-retrieval-pack` 서브커맨드 추가
+- 수정: `src/brain_agent/storage/sqlite_store.py`
+  - `append_event("retrieval.pack_built", payload)` 저장 지점 추가
+- 수정(선택): `src/brain_agent/storage/event_log.py`
+  - JSONL 백업 로그에도 동일 event_type 저장
 
 ### 옵션 B
 - 기존 `src/brain_agent/retrieval/keyword.py`에 pack 생성 로직 통합
 - CLI는 동일하게 추가
+
+### 4.1 코드 연결 포인트 (현재 구현 기준)
+1. `src/brain_agent/retrieval/keyword.py`
+- 이미 BM25/overlap retrieval이 있어 pack builder의 score source로 재사용 가능하다.
+2. `src/brain_agent/metadata/organize.py`
+- `data/meta/index/datasets_by_subcategory.json` 구조를 subcategory 선별 입력으로 사용한다.
+3. `src/brain_agent/storage/sqlite_store.py`
+- `list_datasets()`, `list_data_fields()`, `list_operators()`로 DB 기반 pack 생성 경로를 지원한다.
 
 ## 5) 알고리즘 가이드
 ### 5.1 subcategory 선별
@@ -112,6 +157,13 @@
    - subcategory +1
 3. 확장 후에도 실패하면 step-21 repair loop로 넘긴다.
 
+### 5.6 retrieval graph 생성 규칙 (Neural Cosmos 데이터 레이어)
+1. 노드 타입은 `idea`, `subcategory`, `dataset`, `field`, `operator`만 허용한다.
+2. 엣지 타입은 `retrieval_match`, `contains_dataset`, `contains_field`, `supports_operator`로 제한한다.
+3. score는 retrieval 스코어를 0~1로 정규화한다.
+4. lane은 `exploit|explore` 이외 값 금지.
+5. UI 렌더러가 2D/3D를 선택할 수 있도록 레이아웃 좌표는 강제하지 않는다.
+
 ## 6) 검증 커맨드 (완료 기준)
 아래를 문서화 가능한 형태로 실행/기록한다.
 
@@ -127,6 +179,8 @@ PYTHONPATH=src python3 -m brain_agent.cli build-retrieval-pack \
 3. token_estimate가 계산된다.
 4. full metadata가 output에 포함되지 않는다.
 5. exploit/explore 비율 및 확장 정책 메타가 포함된다.
+6. `visual_graph.nodes/edges`가 생성되고 lane/state/type 규칙을 만족한다.
+7. retrieval 단계 이벤트(`retrieval.pack_built`)가 event_log에 남는다.
 
 ## 7) 완료 정의 (Definition of Done)
 - [ ] retrieval pack 스키마가 코드/문서로 고정됨
@@ -136,6 +190,8 @@ PYTHONPATH=src python3 -m brain_agent.cli build-retrieval-pack \
 - [ ] 반복 오류 시 retrieval 확장 트리거가 정의됨
 - [ ] 예시 아이디어 입력으로 재현 가능한 출력 생성 성공
 - [ ] step-18이 바로 사용할 수 있는 인터페이스 제공
+- [ ] 프론트용 `visual_graph` 계약이 고정됨 (Neural Cosmos v0)
+- [ ] retrieval 이벤트 스키마가 고정됨 (`retrieval.*`)
 
 ## 8) 다음 step 인계
 - step-18은 이 step의 retrieval pack을 입력으로 받아 FastExpr 지식팩과 결합한다.

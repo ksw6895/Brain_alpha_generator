@@ -7,6 +7,7 @@
 - 하지만 비용 제어가 없으면 "동작하지만 운영 불가능" 상태가 된다.
 - step-20은 호출 예산, 자동 축소, 캐시를 통해 비용을 상한선 안으로 고정한다.
 - 단, 비용 최적화가 탐색을 죽이지 않도록 exploit/explore 예산을 분리한다.
+- 이 step에서 "Budget/Quality 대시보드" telemetry 계약도 함께 고정한다.
 
 ## 1) 배경과 의도
 ### 1.1 문제
@@ -37,6 +38,14 @@
 - completion budget: 1k~2k
 - batch hard cap: 팀 상황에 맞게 설정 (문서화 필수)
 - exploit/explore ratio: 70/30 (초기값)
+
+### 2.3 프론트 동시 적용 범위 (F20: Budget Console)
+- 목적: 사용자가 현재 run의 비용 상태와 fallback 동작을 실시간 계기판으로 확인
+- 필수 시각화:
+  1. prompt/completion 토큰 게이지
+  2. fallback 단계 타임라인
+  3. coverage/novelty KPI 트렌드
+  4. explore lane 보존율(최소치 미만 여부)
 
 ## 3) 구현 범위
 ### 3.1 설정
@@ -70,6 +79,30 @@
   - fallback 횟수
   - coverage KPI (subcategory unique count)
   - novelty KPI (신규 operator/field 조합 비율)
+- 이벤트명 권장:
+  - `budget.check_passed`
+  - `budget.check_failed`
+  - `budget.fallback_applied`
+  - `budget.explore_floor_preserved`
+  - `budget.blocked`
+
+### 3.4 대시보드 조회용 API 계약
+- 신규(권장): `src/brain_agent/server/app.py` REST endpoint
+  - `GET /api/runs/{run_id}/budget`
+  - `GET /api/runs/{run_id}/kpi`
+- 소비자(권장): `frontend-next/`의 Tremor/Recharts 대시보드 컴포넌트
+- 응답은 차트 친화 포맷으로 제공
+  - `series`: 시계열 배열
+  - `gauges`: 현재값/한도값
+  - `flags`: 경고 상태
+
+### 3.5 코드 연결 포인트 (현재 구현 기준)
+1. `src/brain_agent/storage/sqlite_store.py`
+- 기존 `append_event()`를 그대로 재사용해 budget telemetry를 저장한다.
+2. `src/brain_agent/agents/pipeline.py`
+- 현재 `metadata_sync`, `cycle_completed` 이벤트가 저장되므로 run 경계(run_id) 주입 지점으로 사용한다.
+3. `src/brain_agent/simulation/runner.py`
+- simulation 결과 이벤트와 budget 이벤트를 같은 run_id로 연결해 Arena/Budget 교차 조회를 가능하게 한다.
 
 ## 4) fallback 순서 (강제)
 예산 초과 시 아래 순서대로 축소:
@@ -99,6 +132,7 @@ PYTHONPATH=src python3 -m brain_agent.cli estimate-prompt-cost \
 4. 로그가 남는다
 5. explore lane 최소 비율이 유지된다
 6. coverage/novelty KPI가 저장된다
+7. WebSocket 또는 REST 조회로 Budget Console UI가 실시간 갱신된다
 
 ## 6) 완료 정의 (Definition of Done)
 - [ ] budget config 파일 도입
@@ -107,6 +141,8 @@ PYTHONPATH=src python3 -m brain_agent.cli estimate-prompt-cost \
 - [ ] 배치 단위 상한 적용
 - [ ] exploit/explore 이중 예산이 강제됨
 - [ ] 리서치 품질 KPI(coverage/novelty)가 수집됨
+- [ ] 대시보드용 telemetry 이벤트 계약이 고정됨
+- [ ] run 단위 budget/kpi 조회 API가 정의됨
 
 ## 7) 다음 step 인계
 - step-21은 budget 레이어를 통과한 생성 결과만 받아 validation-first loop를 완성한다.
