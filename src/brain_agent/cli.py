@@ -48,7 +48,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sync-metadata":
         session = _session_from_args(args)
         target = _target_from_args(args)
-        summary = sync_all_metadata(session, store, target, sync_fields=not args.skip_fields)
+        max_field_datasets = args.max_field_datasets
+        if isinstance(max_field_datasets, int) and max_field_datasets <= 0:
+            max_field_datasets = None
+        wait_on_rate_limit = not bool(args.no_wait_on_rate_limit)
+        summary = sync_all_metadata(
+            session,
+            store,
+            target,
+            sync_fields=not args.skip_fields,
+            max_field_datasets=max_field_datasets,
+            wait_on_rate_limit=wait_on_rate_limit,
+        )
         print(json.dumps(summary, ensure_ascii=False))
         return 0
 
@@ -124,6 +135,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_meta.add_argument("--universe", default="TOP3000")
     p_meta.add_argument("--delay", type=int, default=1)
     p_meta.add_argument("--skip-fields", action="store_true")
+    p_meta.add_argument(
+        "--max-field-datasets",
+        type=int,
+        default=0,
+        help="Limit number of datasets used for /data-fields sync (<=0 means no limit).",
+    )
+    p_meta.add_argument(
+        "--no-wait-on-rate-limit",
+        action="store_true",
+        help="Fail fast on 429 instead of waiting and continuing.",
+    )
 
     p_val = sub.add_parser("validate-expression", help="Run static validation")
     p_val.add_argument("expression")

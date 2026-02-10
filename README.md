@@ -37,6 +37,40 @@ PYTHONPATH=src bash scripts/sync_metadata.sh --region USA --delay 1 --universe T
 > 브라우저에서 인증 완료 후 Enter를 누르면 진행됩니다.
 > 세션 쿠키(`~/.brain_session_cookies`)를 재사용하므로 연속 실행 시 재인증이 줄어듭니다.
 > 참고로 `sync_metadata.sh`는 내부적으로 options 동기화도 함께 수행합니다.
+> 즉, 보통은 `sync_metadata.sh` 한 번만 실행해도 됩니다.
+> 기본값으로 `/data-fields`는 전체 dataset id를 순회하는 샤딩 수집으로 동기화합니다.
+> (전역 `/data-fields` 조회는 API count 상한으로 약 10,000에서 잘릴 수 있어 기본 전략에서 제외했습니다.)
+> 429를 만나면 대기 후 자동 재개하며, 반복 429 구간에서는 대기 시간이 점진적으로 커집니다.
+
+전체 동기화가 너무 오래 걸리면 범위를 줄여 실행할 수 있습니다:
+```bash
+BRAIN_MAX_FIELD_DATASETS=10 PYTHONPATH=src bash scripts/sync_metadata.sh --region USA --delay 1 --universe TOP3000
+```
+위처럼 `BRAIN_MAX_FIELD_DATASETS`를 지정하면 전체가 아니라 선택된 일부 dataset 기준으로만 `/data-fields`를 수집합니다.
+
+필드까지 당장 필요 없으면:
+```bash
+PYTHONPATH=src python3 -m brain_agent.cli sync-metadata --interactive-login --skip-fields --region USA --delay 1 --universe TOP3000
+```
+
+429에서 즉시 실패하도록 바꾸려면:
+```bash
+BRAIN_WAIT_ON_RATE_LIMIT=0 PYTHONPATH=src bash scripts/sync_metadata.sh --region USA --delay 1 --universe TOP3000
+```
+
+## 메타데이터 인덱스 산출물
+
+`sync_metadata.sh` 실행 후 아래 인덱스가 자동 생성됩니다.
+- `data/meta/index/category_glossary.json`: 카테고리 의미 + 에이전트 힌트
+- `data/meta/index/datasets_by_category.json`
+- `data/meta/index/datasets_by_subcategory.json`
+- `data/meta/index/operators_by_category.json`
+- `data/meta/index/manifest.json`
+- `data/meta/by_category/*.datasets.json` (카테고리별 dataset 분할 파일)
+- `data/meta/by_subcategory/*.datasets.json` (서브카테고리별 dataset 분할 파일)
+- `data/meta/by_category/*.fields.json` (필드 수집 시 카테고리별 field 분할 파일)
+- `data/meta/by_subcategory/*.fields.json` (필드 수집 시 서브카테고리별 field 분할 파일)
+- `data/meta/data_fields_<REGION>_<DELAY>_<UNIVERSE>_progress.json` (필드 수집 진행 상태 체크포인트)
 
 ## 인증 우선순위
 
