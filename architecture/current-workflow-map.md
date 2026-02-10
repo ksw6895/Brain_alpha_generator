@@ -18,29 +18,29 @@
 
 ```mermaid
 flowchart TD
-  U["\"사용자\"가 실행 시작"] --> ENV["\"환경 준비\": .venv + requirements 설치"]
-  ENV --> CRED["\"크리덴셜 저장\": scripts/setup_credentials.sh"]
-  CRED --> CREDFILE["\"~/.brain_credentials\" 생성 (권한 600)"]
+  U["'사용자'가 실행 시작"] --> ENV["'환경 준비': .venv + requirements 설치"]
+  ENV --> CRED["'크리덴셜 저장': scripts/setup_credentials.sh"]
+  CRED --> CREDFILE["'~/.brain_credentials' 생성 (권한 600)"]
 
-  CREDFILE --> OPT["\"옵션 동기화\": scripts/sync_options.sh"]
-  OPT --> OPTSAVE["\"OPTIONS /simulations\" 저장 -> data/meta + SQLite"]
+  CREDFILE --> OPT["'옵션 동기화': scripts/sync_options.sh"]
+  OPT --> OPTSAVE["'OPTIONS /simulations' 저장 -> data/meta + SQLite"]
 
-  OPTSAVE --> META["\"메타 동기화\": scripts/sync_metadata.sh"]
-  META --> METASAVE["\"/operators\", \"/data-sets\", \"/data-fields\" 저장"]
+  OPTSAVE --> META["'메타 동기화': scripts/sync_metadata.sh"]
+  META --> METASAVE["'/operators', '/data-sets', '/data-fields' 저장"]
 
-  METASAVE --> CAND["\"후보 알파 준비\": JSON 파일(수동/템플릿)"]
-  CAND --> VAL["\"정적 검증\": scripts/validate_expression.sh"]
-  VAL --> SIM["\"시뮬 실행\": scripts/simulate_candidates.sh"]
+  METASAVE --> CAND["'후보 알파 준비': JSON 파일(수동/템플릿)"]
+  CAND --> VAL["'정적 검증': scripts/validate_expression.sh"]
+  VAL --> SIM["'시뮬 실행': scripts/simulate_candidates.sh"]
 
-  SIM --> DEDUP["\"중복 검사\": fingerprint 비교 후 스킵/진행"]
-  DEDUP --> POSTSIM["\"POST /simulations\" + \"Retry-After\" 폴링"]
-  POSTSIM --> ALPHA["\"alpha_id\" 및 상세/recordsets 수집"]
+  SIM --> DEDUP["'중복 검사': fingerprint 비교 후 스킵/진행"]
+  DEDUP --> POSTSIM["'POST /simulations' + 'Retry-After' 폴링"]
+  POSTSIM --> ALPHA["'alpha_id' 및 상세/recordsets 수집"]
 
-  ALPHA --> EVAL["\"평가/랭킹\": scripts/evaluate_results.sh"]
-  EVAL --> SCORE["\"ScoreCard\" 생성 (Sharpe/Fitness/Turnover/상관)"]
+  ALPHA --> EVAL["'평가/랭킹': scripts/evaluate_results.sh"]
+  EVAL --> SCORE["'ScoreCard' 생성 (Sharpe/Fitness/Turnover/상관)"]
 
-  SCORE --> DIVOPT["\"선택\": scripts/diversity_snapshot.sh"]
-  DIVOPT --> OUT["\"운영 출력\": 통과 후보/로그/DB 누적"]
+  SCORE --> DIVOPT["'선택': scripts/diversity_snapshot.sh"]
+  DIVOPT --> OUT["'운영 출력': 통과 후보/로그/DB 누적"]
 ```
 
 ### 구현된 흐름에서 사용자가 체감하는 실행 순서
@@ -64,22 +64,22 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  I0["\"미구현 시작점\": 완전 자동 알파 생산 루프"] --> I1["\"Idea Collector (LLM)\" 자동 아이디어 생성"]
-  I1 --> I2["\"Retrieval 결합\": operators/fields Top-K 자동 주입"]
-  I2 --> I3["\"FastExpr Builder (LLM)\" JSON 강제 출력"]
+  I0["'미구현 시작점': 완전 자동 알파 생산 루프"] --> I1["'Idea Collector (LLM)' 자동 아이디어 생성"]
+  I1 --> I2["'Retrieval 결합': operators/fields Top-K 자동 주입"]
+  I2 --> I3["'FastExpr Builder (LLM)' JSON 강제 출력"]
 
-  I3 --> I4["\"Static Validator\" 통과 여부 판단"]
-  I4 -->|"\"실패\""| I5["\"자동 Rewrite 루프\" (에러 피드백 반영)"]
+  I3 --> I4["'Static Validator' 통과 여부 판단"]
+  I4 -->|실패| I5["'자동 Rewrite 루프' (에러 피드백 반영)"]
   I5 --> I3
 
-  I4 -->|"\"통과\""| I6["\"Multi-Simulation Batch\" 자동 편성/실행"]
-  I6 --> I7["\"Evaluator\" 점수/상관/안정성 평가"]
-  I7 --> I8["\"Feedback Mutator\" 변이 생성"]
+  I4 -->|통과| I6["'Multi-Simulation Batch' 자동 편성/실행"]
+  I6 --> I7["'Evaluator' 점수/상관/안정성 평가"]
+  I7 --> I8["'Feedback Mutator' 변이 생성"]
   I8 --> I6
 
-  I7 --> I9["\"Submit Gate\" 정책/중복/다양성 체크"]
-  I9 --> I10["\"Submit API\" 자동 제출 + 상태 추적"]
-  I10 --> I11["\"운영 대시보드\" KPI/알림/리포트"]
+  I7 --> I9["'Submit Gate' 정책/중복/다양성 체크"]
+  I9 --> I10["'Submit API' 자동 제출 + 상태 추적"]
+  I10 --> I11["'운영 대시보드' KPI/알림/리포트"]
 ```
 
 ### 미구현/부분구현 포인트 요약
