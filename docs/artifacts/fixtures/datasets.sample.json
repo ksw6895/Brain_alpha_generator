@@ -1,0 +1,35 @@
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "pv1",
+      "name": "Price Volume Core",
+      "description": "Core price/volume dataset.",
+      "region": "USA",
+      "delay": 1,
+      "universe": "TOP3000",
+      "coverage": 0.99,
+      "valueScore": 0.83,
+      "fieldCount": 120,
+      "alphaCount": 124512,
+      "userCount": 3000,
+      "themes": ["price", "volume"]
+    },
+    {
+      "id": "fundamental6",
+      "name": "Fundamentals Core",
+      "description": "Fundamental fields for equities.",
+      "region": "USA",
+      "delay": 1,
+      "universe": "TOP3000",
+      "coverage": 0.93,
+      "valueScore": 0.78,
+      "fieldCount": 540,
+      "alphaCount": 56421,
+      "userCount": 1890,
+      "themes": ["fundamental", "quality"]
+    }
+  ]
+}

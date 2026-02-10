@@ -38,6 +38,11 @@ PYTHONPATH=src bash scripts/sync_metadata.sh --region USA --delay 1 --universe T
 - 파이프라인 오케스트레이터: `src/brain_agent/agents/pipeline.py`
 - CLI 진입점: `src/brain_agent/cli.py`
 
+## 샘플 Fixture
+
+- API 응답 샘플(JSON): `docs/artifacts/fixtures/`
+- 예시 목적이며, 운영 시에는 실제 API fetch 결과를 사용하세요.
+
 ## 주의
 
 - 실제 로그인/바이오메트릭 인증은 사용자 수동 개입이 필요할 수 있습니다.

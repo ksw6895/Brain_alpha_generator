@@ -1,0 +1,31 @@
+{
+  "id": "alpha_example_001",
+  "type": "REGULAR",
+  "regular": {
+    "code": "rank(ts_delta(log(close), 5))"
+  },
+  "settings": {
+    "instrumentType": "EQUITY",
+    "region": "USA",
+    "universe": "TOP3000",
+    "delay": 1,
+    "decay": 15,
+    "neutralization": "SUBINDUSTRY",
+    "truncation": 0.08,
+    "pasteurization": "ON",
+    "unitHandling": "VERIFY",
+    "nanHandling": "OFF",
+    "language": "FASTEXPR"
+  },
+  "is": {
+    "sharpe": 1.32,
+    "fitness": 1.05,
+    "turnover": 25.1,
+    "drawdown": -0.12,
+    "coverage": 0.92,
+    "checks": [
+      {"name": "SHARPE", "result": "PASS", "value": 1.32, "limit": 1.25},
+      {"name": "FITNESS", "result": "PASS", "value": 1.05, "limit": 1.0}
+    ]
+  }
+}

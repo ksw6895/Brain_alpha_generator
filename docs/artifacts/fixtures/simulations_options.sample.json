@@ -1,0 +1,84 @@
+{
+  "actions": {
+    "POST": {
+      "settings": {
+        "children": {
+          "instrumentType": {
+            "label": "Instrument type",
+            "type": "choice",
+            "choices": [
+              {"value": "EQUITY", "label": "Equity"}
+            ]
+          },
+          "region": {
+            "label": "Region",
+            "type": "choice",
+            "choices": {
+              "instrumentType": {
+                "EQUITY": [
+                  {"value": "USA", "label": "USA"},
+                  {"value": "EUR", "label": "Europe"}
+                ]
+              }
+            }
+          },
+          "universe": {
+            "label": "Universe",
+            "type": "choice",
+            "choices": {
+              "instrumentType": {
+                "EQUITY": {
+                  "region": {
+                    "USA": [
+                      {"value": "TOP3000", "label": "TOP3000"},
+                      {"value": "TOP1000", "label": "TOP1000"}
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "delay": {
+            "label": "Delay",
+            "type": "choice",
+            "choices": {
+              "instrumentType": {
+                "EQUITY": {
+                  "region": {
+                    "USA": [
+                      {"value": 0, "label": "0"},
+                      {"value": 1, "label": "1"}
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "neutralization": {
+            "label": "Neutralization",
+            "type": "choice",
+            "choices": {
+              "instrumentType": {
+                "EQUITY": {
+                  "region": {
+                    "USA": [
+                      {"value": "SUBINDUSTRY", "label": "Subindustry"},
+                      {"value": "INDUSTRY", "label": "Industry"}
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "language": {
+            "label": "Language",
+            "type": "choice",
+            "choices": [
+              {"value": "FASTEXPR", "label": "FastExpr"}
+            ]
+          }
+        }
+      }
+    }
+  }
+}

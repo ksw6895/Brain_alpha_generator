@@ -1,0 +1,8 @@
+{
+  "records": [
+    {"region": "USA", "delay": 1, "dataCategory": "price", "count": 12},
+    {"region": "EUR", "delay": 1, "dataCategory": "fundamental", "count": 6},
+    {"region": "USA", "delay": 0, "dataCategory": "news", "count": 3}
+  ],
+  "updatedAt": "2026-02-10T00:00:00Z"
+}

@@ -1,0 +1,37 @@
+{
+  "count": 3,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": "close",
+      "dataset": {"id": "pv1"},
+      "type": "MATRIX",
+      "description": "Close price.",
+      "coverage": 0.999,
+      "alphaCount": 210000,
+      "userCount": 4000,
+      "themes": ["price"]
+    },
+    {
+      "id": "volume",
+      "dataset": {"id": "pv1"},
+      "type": "MATRIX",
+      "description": "Trading volume.",
+      "coverage": 0.998,
+      "alphaCount": 180000,
+      "userCount": 3800,
+      "themes": ["volume"]
+    },
+    {
+      "id": "market_cap",
+      "dataset": {"id": "fundamental6"},
+      "type": "VECTOR",
+      "description": "Market capitalization.",
+      "coverage": 0.95,
+      "alphaCount": 98000,
+      "userCount": 2500,
+      "themes": ["size"]
+    }
+  ]
+}

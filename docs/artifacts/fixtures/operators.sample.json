@@ -1,0 +1,29 @@
+[
+  {
+    "name": "rank",
+    "category": "Cross Sectional",
+    "scope": ["REGULAR", "SELECTION"],
+    "definition": "rank(x)",
+    "description": "Cross-sectional rank transform.",
+    "level": "BASIC",
+    "documentation": "https://platform.worldquantbrain.com/learn"
+  },
+  {
+    "name": "ts_delta",
+    "category": "Time Series",
+    "scope": ["REGULAR"],
+    "definition": "ts_delta(x, d)",
+    "description": "Difference between current value and lagged value.",
+    "level": "BASIC",
+    "documentation": "https://platform.worldquantbrain.com/learn"
+  },
+  {
+    "name": "log",
+    "category": "Transform",
+    "scope": ["REGULAR"],
+    "definition": "log(x)",
+    "description": "Natural logarithm transform.",
+    "level": "BASIC",
+    "documentation": "https://platform.worldquantbrain.com/learn"
+  }
+]

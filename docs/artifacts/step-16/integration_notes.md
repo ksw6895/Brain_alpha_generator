@@ -7,3 +7,4 @@
 ## ACE API [Gold]
 - `ACE API [Gold]/ace_lib.py`의 세션/시뮬/메타 수집 로직을 참고해 현재 모듈화 구조로 분해 구현함.
 - 직접 의존하지 않고 `src/brain_agent`로 정리해 유지보수성을 확보함.
+- `ACE API [Gold]/how_to_use.ipynb`는 출력 제거로 경량화했으며, 구조 참고용 샘플은 `docs/artifacts/fixtures/`로 분리함.
