@@ -1,0 +1,7 @@
+{
+  "instrumentType": "EQUITY",
+  "region": "USA",
+  "universe": "TOP3000",
+  "delay": 1,
+  "language": "FASTEXPR"
+}

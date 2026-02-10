@@ -1,0 +1,8 @@
+{
+  "query": "earnings surprise mean reversion quality volatility scaling",
+  "top_k": {
+    "operators": 50,
+    "data_fields": 50,
+    "datasets": 20
+  }
+}

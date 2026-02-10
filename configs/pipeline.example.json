@@ -1,0 +1,26 @@
+{
+  "paths": {
+    "db_path": "data/brain_agent.db",
+    "meta_dir": "data/meta",
+    "events_path": "data/events.jsonl"
+  },
+  "target": {
+    "instrumentType": "EQUITY",
+    "region": "USA",
+    "universe": "TOP3000",
+    "delay": 1
+  },
+  "metadata_sync_policy": {
+    "refresh_operators_daily": true,
+    "refresh_on_cache_miss": true,
+    "refresh_on_sparse_results": true,
+    "refresh_on_validation_error_spike": true
+  },
+  "filter_policy": {
+    "min_sharpe": 1.25,
+    "min_fitness": 1.0,
+    "min_turnover": 1.0,
+    "max_turnover": 70.0,
+    "max_abs_corr": 0.7
+  }
+}

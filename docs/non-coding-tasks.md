@@ -14,6 +14,10 @@
 | NC-003 | 제출 정책(Sharpe/Fitness/Turnover 기준) 운영 합의안 작성 | TODO | 미정 | 운영 합의 문서 링크 추가 |  |
 | NC-004 | Diversity 목표(region/delay/dataCategory) 월간 목표치 확정 | TODO | 미정 | 목표표 링크 추가 |  |
 | NC-005 | Step 진행 리뷰 루틴(주간 점검 시간/담당자) 확정 | TODO | 미정 | 캘린더/노션 링크 추가 |  |
+| NC-006 | Step 1 WSL 개발 환경 세팅 산출물 정리 및 의존성 기록 | DONE | Codex | docs/step-01-execution.md | 2026-02-10 |
+| NC-007 | Step 2~16 실행 산출물 문서화 및 의존성 기록 | DONE | Codex | docs/step-02-execution.md ~ docs/step-16-execution.md | 2026-02-10 |
 
 ## 업데이트 로그
 - 2026-02-10: 초안 생성 (Step 0 완료 후 최초 등록)
+- 2026-02-10: NC-006 완료 (Step 1 산출물/의존성 문서화)
+- 2026-02-10: NC-007 완료 (Step 2~16 산출물/체크리스트 문서화)

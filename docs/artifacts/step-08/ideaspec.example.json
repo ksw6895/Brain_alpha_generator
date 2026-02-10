@@ -1,0 +1,13 @@
+{
+  "idea_id": "8fbc5f8f-c468-4c8b-b84b-57e4d27976ef",
+  "hypothesis": "earnings surprise mean reversion with quality overlay",
+  "theme_tags": ["value", "quality", "momentum"],
+  "target": {
+    "instrumentType": "EQUITY",
+    "region": "USA",
+    "universe": "TOP3000",
+    "delay": 1
+  },
+  "candidate_datasets": ["pv1", "fundamental6"],
+  "keywords_for_retrieval": ["earnings", "surprise", "mean reversion"]
+}

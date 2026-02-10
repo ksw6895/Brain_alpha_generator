@@ -1,0 +1,6 @@
+requests>=2.31
+pydantic>=2.6
+pandas>=2.1
+tenacity>=8.2
+python-dotenv>=1.0
+rich>=13.7

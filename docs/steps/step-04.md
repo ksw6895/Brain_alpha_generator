@@ -92,10 +92,15 @@
 ---
 
 
+
+## Step 4 실행 결과
+- 산출물 문서: `docs/step-04-execution.md`
+- 구현 산출물/완료 범위/의존성은 실행 문서에 정리.
+
 ## 체크리스트
-- [ ] Operators (연산자) 메타데이터: GET /operators
-- [ ] Datasets 메타데이터: GET /data-sets
-- [ ] Data Fields(변수) 메타데이터: GET /data-fields
-- [ ] 로컬 저장 스키마(권장: SQLite)
-- [ ] “메타데이터 동기화 정책”
-- [ ] 이 단계 산출물을 저장하고 후속 단계 의존성을 기록했다.
+- [x] Operators (연산자) 메타데이터: GET /operators
+- [x] Datasets 메타데이터: GET /data-sets
+- [x] Data Fields(변수) 메타데이터: GET /data-fields
+- [x] 로컬 저장 스키마(권장: SQLite)
+- [x] “메타데이터 동기화 정책”
+- [x] 이 단계 산출물을 저장하고 후속 단계 의존성을 기록했다.

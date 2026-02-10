@@ -1,0 +1,7 @@
+{
+  "min_sharpe": 1.25,
+  "min_fitness": 1.0,
+  "min_turnover": 1.0,
+  "max_turnover": 70.0,
+  "max_abs_corr": 0.7
+}

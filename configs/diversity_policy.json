@@ -1,0 +1,6 @@
+{
+  "target_regions": 3,
+  "target_delays": 2,
+  "target_data_categories": 3,
+  "diversity_bonus_weight": 0.1
+}

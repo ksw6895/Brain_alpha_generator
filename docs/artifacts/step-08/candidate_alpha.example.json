@@ -1,0 +1,28 @@
+{
+  "idea_id": "8fbc5f8f-c468-4c8b-b84b-57e4d27976ef",
+  "alpha_id": null,
+  "simulation_settings": {
+    "type": "REGULAR",
+    "settings": {
+      "instrumentType": "EQUITY",
+      "region": "USA",
+      "universe": "TOP3000",
+      "delay": 1,
+      "decay": 15,
+      "neutralization": "SUBINDUSTRY",
+      "truncation": 0.08,
+      "maxTrade": "ON",
+      "pasteurization": "ON",
+      "testPeriod": "P1Y6M",
+      "unitHandling": "VERIFY",
+      "nanHandling": "OFF",
+      "language": "FASTEXPR",
+      "visualization": false
+    },
+    "regular": "rank(ts_delta(log(close), 5))"
+  },
+  "generation_notes": {
+    "used_fields": ["close"],
+    "used_operators": ["rank", "ts_delta", "log"]
+  }
+}

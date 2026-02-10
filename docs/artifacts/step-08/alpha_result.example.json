@@ -1,0 +1,16 @@
+{
+  "idea_id": "8fbc5f8f-c468-4c8b-b84b-57e4d27976ef",
+  "alpha_id": "alpha_xxx",
+  "settings_fingerprint": "sha256(settings::expression)",
+  "expression_fingerprint": "sha256(expression)",
+  "summary_metrics": {
+    "sharpe": 1.32,
+    "fitness": 1.05,
+    "turnover": 25.1,
+    "drawdown": -0.12,
+    "coverage": 0.92
+  },
+  "recordsets_saved": ["pnl", "turnover", "yearly-stats", "daily-pnl"],
+  "created_at": "2026-02-10T00:00:00Z",
+  "raw_payload": {}
+}

@@ -72,8 +72,13 @@
 ---
 
 
+
+## Step 8 실행 결과
+- 산출물 문서: `docs/step-08-execution.md`
+- 구현 산출물/완료 범위/의존성은 실행 문서에 정리.
+
 ## 체크리스트
-- [ ] IdeaSpec (LLM 출력 표준)
-- [ ] CandidateAlpha (FastExpr Builder 출력 표준)
-- [ ] AlphaResult (시뮬 후 저장 표준)
-- [ ] 이 단계 산출물을 저장하고 후속 단계 의존성을 기록했다.
+- [x] IdeaSpec (LLM 출력 표준)
+- [x] CandidateAlpha (FastExpr Builder 출력 표준)
+- [x] AlphaResult (시뮬 후 저장 표준)
+- [x] 이 단계 산출물을 저장하고 후속 단계 의존성을 기록했다.

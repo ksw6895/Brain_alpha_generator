@@ -111,7 +111,12 @@ class BrainAPISession:
 ---
 
 
+
+## Step 2 실행 결과
+- 산출물 문서: `docs/step-02-execution.md`
+- 구현 산출물/완료 범위/의존성은 실행 문서에 정리.
+
 ## 체크리스트
-- [ ] 크리덴셜 저장 (최소 방식: ~/.brain_credentials)
-- [ ] BrainAPISession(권장 구현: “자동 재로그인” 포함)
-- [ ] 이 단계 산출물을 저장하고 후속 단계 의존성을 기록했다.
+- [x] 크리덴셜 저장 (최소 방식: ~/.brain_credentials)
+- [x] BrainAPISession(권장 구현: “자동 재로그인” 포함)
+- [x] 이 단계 산출물을 저장하고 후속 단계 의존성을 기록했다.
