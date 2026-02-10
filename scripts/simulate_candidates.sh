@@ -11,5 +11,11 @@ OUTPUT_PATH="${2:-data/simulation_results/latest.json}"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 export PYTHONPATH="${PYTHONPATH:-src}"
+INTERACTIVE_LOGIN="${BRAIN_INTERACTIVE_LOGIN:-1}"
 
-"$PYTHON_BIN" -m brain_agent.cli simulate-candidates --input "$INPUT_PATH" --output "$OUTPUT_PATH"
+EXTRA_ARGS=()
+if [[ "$INTERACTIVE_LOGIN" == "1" ]]; then
+  EXTRA_ARGS+=(--interactive-login)
+fi
+
+"$PYTHON_BIN" -m brain_agent.cli simulate-candidates "${EXTRA_ARGS[@]}" --input "$INPUT_PATH" --output "$OUTPUT_PATH"

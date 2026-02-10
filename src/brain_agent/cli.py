@@ -5,17 +5,28 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import sys
 from pathlib import Path
 from typing import Any
+
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional runtime dependency
+    load_dotenv = None
 
 from .brain_api.client import BrainAPISession, BrainCredentials, load_credentials, save_credentials
 from .brain_api.diversity import get_diversity
 from .config import AppConfig
+from .exceptions import ManualActionRequired
 from .metadata.sync import sync_all_metadata, sync_simulation_options
 from .schemas import AlphaResult, CandidateAlpha, SimulationTarget
 from .simulation.runner import SimulationRunner
 from .storage.sqlite_store import MetadataStore
 from .validation.static_validator import StaticValidator
+
+if load_dotenv is not None:
+    # Enables .env-based credentials in local development.
+    load_dotenv()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -103,9 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_options = sub.add_parser("sync-options", help="Sync OPTIONS /simulations")
     p_options.add_argument("--credentials", default=None)
+    p_options.add_argument("--interactive-login", action="store_true")
 
     p_meta = sub.add_parser("sync-metadata", help="Sync operators/datasets/data-fields")
     p_meta.add_argument("--credentials", default=None)
+    p_meta.add_argument("--interactive-login", action="store_true")
     p_meta.add_argument("--instrument-type", default="EQUITY")
     p_meta.add_argument("--region", default="USA")
     p_meta.add_argument("--universe", default="TOP3000")
@@ -118,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_sim = sub.add_parser("simulate-candidates", help="Run simulations from candidate JSON list")
     p_sim.add_argument("--credentials", default=None)
+    p_sim.add_argument("--interactive-login", action="store_true")
     p_sim.add_argument("--input", required=True)
     p_sim.add_argument("--output", default="data/simulation_results/latest.json")
 
@@ -127,6 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_div = sub.add_parser("diversity-snapshot", help="Fetch diversity endpoint payload")
     p_div.add_argument("--credentials", default=None)
+    p_div.add_argument("--interactive-login", action="store_true")
     p_div.add_argument("--user-id", default="self")
     p_div.add_argument("--grouping", default="region,delay,dataCategory")
     p_div.add_argument("--output", default="data/diversity/latest.json")
@@ -157,8 +172,19 @@ def _target_from_args(args: argparse.Namespace) -> SimulationTarget:
 
 def _session_from_args(args: argparse.Namespace) -> BrainAPISession:
     creds = load_credentials(args.credentials) if args.credentials else load_credentials()
-    return BrainAPISession(creds)
+    interactive = bool(getattr(args, "interactive_login", False))
+    return BrainAPISession(creds, interactive_login_default=interactive)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except ManualActionRequired as exc:
+        payload = {
+            "error": "manual_action_required",
+            "message": str(exc),
+            "action_url": exc.action_url,
+            "hint": "Run the command with --interactive-login to complete biometrics in-terminal.",
+        }
+        print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
+        raise SystemExit(3)

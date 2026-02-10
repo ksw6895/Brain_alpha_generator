@@ -11,3 +11,8 @@ data/
 
 # Notebook/runtime caches
 .ipynb_checkpoints/
+# Local secrets
+.env
+.env.*
+!.env.example
+

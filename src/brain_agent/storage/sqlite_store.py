@@ -146,7 +146,7 @@ class MetadataStore:
                     (
                         row.get("name"),
                         row.get("category"),
-                        self._normalize_scope(row.get("scope")),
+                        _normalize_scope(row.get("scope")),
                         row.get("definition"),
                         row.get("description"),
                         row.get("level"),
