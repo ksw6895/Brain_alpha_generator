@@ -14,10 +14,16 @@
 | NC-003 | 제출 정책(Sharpe/Fitness/Turnover 기준) 운영 합의안 작성 | TODO | 미정 | 운영 합의 문서 링크 추가 |  |
 | NC-004 | Diversity 목표(region/delay/dataCategory) 월간 목표치 확정 | TODO | 미정 | 목표표 링크 추가 |  |
 | NC-005 | Step 진행 리뷰 루틴(주간 점검 시간/담당자) 확정 | TODO | 미정 | 캘린더/노션 링크 추가 |  |
-| NC-006 | Step 1 WSL 개발 환경 세팅 산출물 정리 및 의존성 기록 | DONE | Codex | docs/step-01-execution.md | 2026-02-10 |
-| NC-007 | Step 2~16 실행 산출물 문서화 및 의존성 기록 | DONE | Codex | docs/step-02-execution.md ~ docs/step-16-execution.md | 2026-02-10 |
+| NC-006 | Step 1 WSL 개발 환경 세팅 산출물 정리 및 의존성 기록 | DONE | Codex | docs/steps/retired-v1-steps.md (기존 증빙 문서 정리됨) | 2026-02-10 |
+| NC-007 | Step 2~16 실행 산출물 문서화 및 의존성 기록 | DONE | Codex | docs/steps/retired-v1-steps.md (기존 증빙 문서 정리됨) | 2026-02-10 |
+| NC-008 | 완료된 step 문서(00~16) 정리/삭제 및 향후 step(17~21) 로드맵 문서 신설 | DONE | Codex | docs/steps/README.md, docs/steps/step-17.md ~ docs/steps/step-21.md | 2026-02-10 |
+| NC-009 | step-17~21 문서를 신규 코드 에이전트 온보딩 가능 수준으로 보강(흐름/의도/입출력/검증 기준 명시) | DONE | Codex | docs/steps/README.md, docs/steps/step-17.md ~ docs/steps/step-21.md | 2026-02-10 |
+| NC-010 | 토큰 절감으로 인한 탐색력 훼손 리스크 보강(이중 예산, 확장 분기, 포맷 복구, 품질 KPI) 반영 | DONE | Codex | docs/steps/README.md, docs/steps/step-17.md, docs/steps/step-18.md, docs/steps/step-19.md, docs/steps/step-20.md, docs/steps/step-21.md | 2026-02-10 |
 
 ## 업데이트 로그
 - 2026-02-10: 초안 생성 (Step 0 완료 후 최초 등록)
 - 2026-02-10: NC-006 완료 (Step 1 산출물/의존성 문서화)
 - 2026-02-10: NC-007 완료 (Step 2~16 산출물/체크리스트 문서화)
+- 2026-02-10: NC-008 완료 (완료된 step 문서 정리/삭제 + 신규 로드맵 step 작성)
+- 2026-02-10: NC-009 완료 (신규 에이전트 착수 가능하도록 step-17~21 문서 구조 보강)
+- 2026-02-10: NC-010 완료 (탐색력 훼손 리스크 완화 정책을 step-17~21에 반영)

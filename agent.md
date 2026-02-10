@@ -3,8 +3,8 @@
 다음 작업자는 아래 절차를 반드시 따른다.
 
 ## 1) 시작 전 확인
-- `docs/steps/step-00.md`부터 현재 목표 step 문서를 먼저 읽는다.
-- `docs/step-00-execution.md`를 읽고 정책 준수/파이프라인 분리 원칙을 전제로 작업한다.
+- `docs/steps/README.md`를 먼저 읽고 현재 목표 step 문서를 확인한다.
+- `docs/baseguideline.md`를 읽고 정책 준수/파이프라인 분리 원칙을 전제로 작업한다.
 - 요청받지 않은 step은 수행하지 않는다.
 
 ## 2) 단계 수행 원칙
