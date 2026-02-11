@@ -14,6 +14,82 @@ IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 NUMBER_RE = re.compile(r"^-?\d+(\.\d+)?$")
 
 
+VALIDATION_ERROR_TAXONOMY: list[dict[str, str]] = [
+    {
+        "error_key": "empty_expression",
+        "match_pattern": r"^Expression is empty$",
+        "severity": "high",
+        "fix_hint": "식이 비어 있습니다. FastExpr 본문을 생성하고 마지막 반환식을 포함하세요.",
+    },
+    {
+        "error_key": "unsupported_characters",
+        "match_pattern": r"Expression contains unsupported characters",
+        "severity": "high",
+        "fix_hint": "허용되지 않은 문자를 제거하고 FastExpr 연산자/식별자만 사용하세요.",
+    },
+    {
+        "error_key": "unbalanced_parentheses",
+        "match_pattern": r"Parentheses are not balanced",
+        "severity": "high",
+        "fix_hint": "괄호 쌍을 맞추고 중첩 호출을 단순화하세요.",
+    },
+    {
+        "error_key": "unknown_operator",
+        "match_pattern": r"Unknown operator:",
+        "severity": "high",
+        "fix_hint": "retrieval pack 내 candidate_operators 목록에서 연산자로 치환하세요.",
+    },
+    {
+        "error_key": "unknown_data_field",
+        "match_pattern": r"Unknown data field:",
+        "severity": "high",
+        "fix_hint": "retrieval pack 내 candidate_fields 목록에서 필드로 치환하세요.",
+    },
+    {
+        "error_key": "operator_no_arguments",
+        "match_pattern": r"Operator .+ has no arguments",
+        "severity": "medium",
+        "fix_hint": "operator signature에 맞는 필수 인자를 채우세요.",
+    },
+    {
+        "error_key": "operator_empty_argument",
+        "match_pattern": r"Operator .+ has an empty argument",
+        "severity": "medium",
+        "fix_hint": "빈 인자를 제거하고 positional 순서를 다시 맞추세요.",
+    },
+    {
+        "error_key": "operator_arity_mismatch",
+        "match_pattern": r"Operator .+ expects .+ args but got .+",
+        "severity": "high",
+        "fix_hint": "definition의 인자 개수와 순서를 정확히 맞추세요.",
+    },
+    {
+        "error_key": "operator_scope_violation",
+        "match_pattern": r"scope .* is not valid in REGULAR",
+        "severity": "high",
+        "fix_hint": "REGULAR scope를 지원하는 연산자로 교체하세요.",
+    },
+    {
+        "error_key": "ts_non_matrix_input",
+        "match_pattern": r"ts_ operator .+ received non-MATRIX field",
+        "severity": "high",
+        "fix_hint": "ts_ 계열에는 MATRIX 필드만 입력하세요.",
+    },
+    {
+        "error_key": "group_requires_group_and_matrix",
+        "match_pattern": r"group_ operator .+ requires GROUP and MATRIX fields",
+        "severity": "high",
+        "fix_hint": "group_ 연산자는 GROUP 필드와 MATRIX 필드를 함께 넣으세요.",
+    },
+    {
+        "error_key": "vector_used_in_non_vec",
+        "match_pattern": r"VECTOR field .+ used in non-vec_ operator",
+        "severity": "high",
+        "fix_hint": "VECTOR 필드는 vec_ 계열로 먼저 집계한 뒤 사용하세요.",
+    },
+]
+
+
 @dataclass
 class FunctionCall:
     name: str
@@ -261,4 +337,37 @@ def _unique(values: list[str]) -> list[str]:
             continue
         seen.add(value)
         out.append(value)
+    return out
+
+
+def classify_validation_error(error: str) -> dict[str, str]:
+    """Map one validator error message to standardized error taxonomy."""
+    text = str(error or "")
+    for row in VALIDATION_ERROR_TAXONOMY:
+        if re.search(row["match_pattern"], text):
+            return {
+                "error_key": row["error_key"],
+                "severity": row["severity"],
+                "fix_hint": row["fix_hint"],
+                "match_pattern": row["match_pattern"],
+            }
+    return {
+        "error_key": "unknown_validation_error",
+        "severity": "medium",
+        "fix_hint": "오류 메시지를 확인하고 operator/field/scope/type을 순서대로 점검하세요.",
+        "match_pattern": ".*",
+    }
+
+
+def classify_validation_errors(errors: list[str]) -> list[dict[str, str]]:
+    """Map a list of validator errors to taxonomy entries without duplication."""
+    out: list[dict[str, str]] = []
+    seen_keys: set[str] = set()
+    for message in errors:
+        mapped = classify_validation_error(message)
+        key = mapped["error_key"]
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        out.append({**mapped, "message": message})
     return out

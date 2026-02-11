@@ -6,7 +6,7 @@
 ## 1) 정합성 점검 요약 (코드 vs 단계 계획)
 
 - 현재 실제 실행의 중심은 CLI/스크립트 경로다.
-  - `sync-options` / `sync-metadata` / `build-retrieval-pack` / `simulate-candidates` / `evaluate-results`
+  - `sync-options` / `sync-metadata` / `build-retrieval-pack` / `build-knowledge-pack` / `simulate-candidates` / `evaluate-results`
 - 메타데이터 동기화 + 시뮬/평가 엔진은 동작 중이다.
   - 메타 인덱스/진행 파일: `data/meta/*`
   - 결과/레코드셋: `data/simulation_results/*`, `data/recordsets/*`
@@ -14,7 +14,7 @@
 - 이벤트 로그는 이미 존재하지만 범위가 제한적이다.
   - 항상 기록: `simulation_skipped_duplicate`, `simulation_completed`, `retrieval.pack_built`
   - `BrainPipeline` 경로에서만 기록: `metadata_sync`, `cycle_completed`
-- step-17~21에서 정의한 LLM 오케스트레이션/예산 게이트/validation loop/프론트 실시간 스트림은 "계약은 문서화됨, 코드 본체는 구현 예정" 상태다.
+- step-19~21에서 정의한 LLM 오케스트레이션/예산 게이트/validation loop/프론트 실시간 스트림은 "계약은 문서화됨, 코드 본체는 구현 예정" 상태다.
 
 ## 2) 현재 실행 가능 흐름 (CLI 중심, 단순 직렬 + 저장/로그 레인)
 
@@ -29,7 +29,8 @@ flowchart TD
     U["사용자 실행 시작"] --> OPT["sync-options"]
     OPT --> META["sync-metadata"]
     META --> RPACK["build-retrieval-pack"]
-    RPACK --> CAND["후보 JSON 준비 (수동/템플릿)"]
+    RPACK --> KPACK["build-knowledge-pack"]
+    KPACK --> CAND["후보 JSON 준비 (수동/템플릿)"]
     CAND --> VAL["validate-expression (선택)"]
     CAND --> SIM["simulate-candidates"]
     VAL --> SIM
@@ -63,10 +64,11 @@ flowchart TD
 2. `PYTHONPATH=src bash scripts/sync_options.sh`
 3. `PYTHONPATH=src bash scripts/sync_metadata.sh --region USA --delay 1 --universe TOP3000`
 4. `PYTHONPATH=src python3 -m brain_agent.cli build-retrieval-pack --idea <ideaspec.json> --output <retrieval_pack.json>`
-5. 후보 JSON 준비 후 `PYTHONPATH=src bash scripts/simulate_candidates.sh <input.json>`
-6. `PYTHONPATH=src bash scripts/evaluate_results.sh <result.json>`
+5. `PYTHONPATH=src python3 -m brain_agent.cli build-knowledge-pack --output-dir data/meta/index`
+6. 후보 JSON 준비 후 `PYTHONPATH=src bash scripts/simulate_candidates.sh <input.json>`
+7. `PYTHONPATH=src bash scripts/evaluate_results.sh <result.json>`
 
-## 3) Step-17~21 확장 흐름 (구현 예정, 계약 고정됨)
+## 3) Step-19~21 확장 흐름 (구현 예정, 계약 고정됨)
 
 핵심: 프론트엔드를 맨 마지막으로 미루지 않고, 생성/검증/예산/시뮬 파이프라인과 병렬로 관측 계약을 함께 고정한다.
 
@@ -133,6 +135,7 @@ flowchart TD
 ### 구현됨
 - 메타데이터 동기화/인덱스 빌드 (`src/brain_agent/metadata/sync.py`, `src/brain_agent/metadata/organize.py`)
 - step-17 retrieval pack 빌더 + Top-K 예산 config + retrieval 이벤트 (`src/brain_agent/retrieval/pack_builder.py`, `configs/retrieval_budget.json`, `src/brain_agent/cli.py`)
+- step-18 knowledge pack 빌더 + validator taxonomy 연계 (`src/brain_agent/generation/knowledge_pack.py`, `src/brain_agent/validation/static_validator.py`, `src/brain_agent/cli.py`)
 - 정적 검증 (`src/brain_agent/validation/static_validator.py`)
 - 시뮬/중복 스킵/결과 저장 (`src/brain_agent/simulation/runner.py`)
 - 평가 및 기본 변이 로직 (`src/brain_agent/evaluation/evaluator.py`, `src/brain_agent/feedback/mutator.py`)
@@ -142,7 +145,7 @@ flowchart TD
 - 이벤트 로그 저장은 있으나 표준화된 run/stage envelope와 WS 브로드캐스트는 미구현
 
 ### 구현 예정
-- LLM 오케스트레이터, retrieval/knowledge/budget/validation-loop 신규 CLI
+- LLM 오케스트레이터, budget/validation-loop 신규 CLI
 - FastAPI + WebSocket 서버, Next.js 기반 실시간 UI
 - 이벤트명 마이그레이션(신규 dotted event + 기존 snake_case alias 병행)
 

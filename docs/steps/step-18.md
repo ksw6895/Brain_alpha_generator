@@ -157,14 +157,17 @@ PYTHONPATH=src python3 -m brain_agent.cli build-knowledge-pack \
 6. `fastexpr_visual_pack.json`이 생성되고 operators/error_taxonomy/example_cards를 포함한다.
 7. visual pack만으로 operator 카드/에러 카드 렌더링이 가능하다.
 
+실행 증빙:
+- `docs/artifacts/step-18/implementation_report.md` (2026-02-11)
+
 ## 7) 완료 정의 (Definition of Done)
-- [ ] knowledge pack 3종이 생성 가능
-- [ ] 지식팩 스키마가 코드로 고정됨
-- [ ] validation 통과 examples만 포함됨
-- [ ] counter-example/fix hint 팩이 추가됨
-- [ ] step-19가 소비할 입력 포맷이 확정됨
-- [ ] 프론트용 visual knowledge pack 스키마가 고정됨
-- [ ] step-21 오류 코드와 연결 가능한 error taxonomy 키가 포함됨
+- [x] knowledge pack 3종이 생성 가능
+- [x] 지식팩 스키마가 코드로 고정됨
+- [x] validation 통과 examples만 포함됨
+- [x] counter-example/fix hint 팩이 추가됨
+- [x] step-19가 소비할 입력 포맷이 확정됨
+- [x] 프론트용 visual knowledge pack 스키마가 고정됨
+- [x] step-21 오류 코드와 연결 가능한 error taxonomy 키가 포함됨
 
 ## 8) 다음 step 인계
 - step-19에서 Idea Researcher / Alpha Maker 계약에 이 지식팩 필드를 연결한다.

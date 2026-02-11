@@ -18,6 +18,7 @@ from .brain_api.client import BrainAPISession, BrainCredentials, load_credential
 from .brain_api.diversity import get_diversity
 from .config import AppConfig
 from .exceptions import ManualActionRequired
+from .generation.knowledge_pack import build_knowledge_packs
 from .metadata.sync import sync_all_metadata, sync_simulation_options
 from .retrieval.pack_builder import (
     RetrievalPack,
@@ -146,6 +147,23 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "build-knowledge-pack":
+        result = build_knowledge_packs(
+            store=store,
+            output_dir=args.output_dir,
+            meta_dir=args.meta_dir,
+        )
+        payload = {
+            "success": result.success,
+            "output_dir": result.output_dir,
+            "generated_files": result.generated_files,
+            "failed_parts": result.failed_parts,
+            "counts": result.counts,
+            "fallback_used": result.fallback_used,
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0 if result.success else 2
+
     parser.print_help()
     return 1
 
@@ -218,6 +236,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to retrieval budget JSON (uses defaults if missing).",
     )
     p_rpack.add_argument("--output", default="data/retrieval/latest_pack.json")
+
+    p_kpack = sub.add_parser("build-knowledge-pack", help="Build FastExpr knowledge packs (step-18)")
+    p_kpack.add_argument("--output-dir", default="data/meta/index")
+    p_kpack.add_argument("--meta-dir", default=str(configure_default_meta_dir()))
 
     return parser
 

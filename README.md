@@ -40,6 +40,12 @@ PYTHONPATH=src python3 -m brain_agent.cli build-retrieval-pack \
   --output /tmp/retrieval_pack.json
 ```
 
+7. FastExpr knowledge pack 생성 (step-18)
+```bash
+PYTHONPATH=src python3 -m brain_agent.cli build-knowledge-pack \
+  --output-dir data/meta/index
+```
+
 > biometrics 인증이 필요한 계정이면 위 스크립트가 URL을 안내하고 터미널에서 대기합니다.
 > 브라우저에서 인증 완료 후 Enter를 누르면 진행됩니다.
 > 세션 쿠키(`~/.brain_session_cookies`)를 재사용하므로 연속 실행 시 재인증이 줄어듭니다.
@@ -96,6 +102,7 @@ BRAIN_INTERACTIVE_LOGIN=0 PYTHONPATH=src bash scripts/sync_options.sh
 - API 클라이언트: `src/brain_agent/brain_api/client.py`
 - 메타데이터 동기화: `src/brain_agent/metadata/sync.py`
 - retrieval pack 빌더: `src/brain_agent/retrieval/pack_builder.py`
+- knowledge pack 빌더: `src/brain_agent/generation/knowledge_pack.py`
 - 정적 검증기: `src/brain_agent/validation/static_validator.py`
 - 시뮬레이션 러너: `src/brain_agent/simulation/runner.py`
 - 평가기: `src/brain_agent/evaluation/evaluator.py`
