@@ -96,6 +96,12 @@ PYTHONPATH=src python3 -m brain_agent.cli serve-live-events --host 127.0.0.1 --p
 - `GET /api/runs/{run_id}/validation_kpi`
 - `GET /api/runs/{run_id}/reactor_status`
 
+웹 명령 콘솔 API(프론트에서 실행 제어):
+- `GET /api/control/actions` (허용된 액션/템플릿 조회)
+- `POST /api/control/jobs` (액션 실행 요청)
+- `GET /api/control/jobs/{job_id}` (작업 상태/결과 조회)
+- `GET /api/control/jobs` (최근 작업 목록)
+
 Reactor HUD(로컬 프로토타입) 열기:
 - 서버 실행 후 `http://127.0.0.1:8765/ui/reactor?run_id=<RUN_ID>`
 
@@ -112,6 +118,9 @@ PYTHONPATH=src python3 -m brain_agent.cli run-validation-loop \
 
 Neural Genesis Lab(로컬 프로토타입) 열기:
 - 서버 실행 후 `http://127.0.0.1:8765/ui/neural-lab?run_id=<RUN_ID>`
+- 상단 `Command Console`에서 액션을 선택해 웹에서 바로 실행 가능
+- 기본 권장: `run-quick-validation-loop` (idea -> retrieval -> validation-loop를 1회 실행)
+- `Auto Stream Run`을 켜면 완료된 run_id를 자동으로 붙여 스트리밍 연결
 
 > biometrics 인증이 필요한 계정이면 위 스크립트가 URL을 안내하고 터미널에서 대기합니다.
 > 브라우저에서 인증 완료 후 Enter를 누르면 진행됩니다.

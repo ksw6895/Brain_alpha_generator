@@ -52,6 +52,78 @@
       backdrop-filter: blur(3px);
     }
 
+    .control {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(12, 19, 36, 0.86), rgba(7, 10, 18, 0.86));
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .control-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .control form {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .control select,
+    .control input,
+    .control textarea {
+      background: #090e1f;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 9px;
+      font-family: inherit;
+    }
+
+    .control textarea {
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      line-height: 1.35;
+    }
+
+    .control button {
+      background: linear-gradient(135deg, #103b52, #14485f);
+      color: var(--text);
+      border: 1px solid #276581;
+      border-radius: 8px;
+      padding: 7px 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .control-inline {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .control-inline label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
     .title {
       font-size: 16px;
       letter-spacing: 0.08em;
@@ -164,6 +236,7 @@
     @media (max-width: 1100px) {
       .grid { grid-template-columns: 1fr; }
       .hud { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      .control form { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -179,6 +252,23 @@
         <input id="runId" name="run_id" placeholder="step21-run-id" />
         <button type="submit">Stream</button>
       </form>
+    </div>
+
+    <div class="control">
+      <div class="control-head">
+        <span>Command Console</span>
+        <span id="jobStatus">job: idle</span>
+      </div>
+      <form id="commandForm">
+        <select id="actionSelect" aria-label="action"></select>
+        <button type="submit">Run</button>
+        <button type="button" id="templateBtn">Template</button>
+      </form>
+      <textarea id="commandParams" spellcheck="false" aria-label="command params">{}</textarea>
+      <div class="control-inline">
+        <label><input type="checkbox" id="autoStreamRun" checked /> Auto Stream Run</label>
+        <span class="status" id="jobHint">Allowed actions only. No shell injection.</span>
+      </div>
     </div>
 
     <div class="hud">
@@ -211,6 +301,9 @@
       ws: null,
       logs: [],
       runId: "",
+      activeJobId: "",
+      jobPollTimer: null,
+      actionSpecs: [],
       validationPassed: null,
       repairAttempts: 0,
       simProgress: 0,
@@ -229,6 +322,8 @@
 
     bootstrapNodes();
     attachForm();
+    attachCommandForm();
+    void loadControlActions();
     animate();
 
     function setupCanvas(id) {
@@ -252,6 +347,143 @@
         const runId = String(document.getElementById("runId").value || "").trim();
         connect(runId);
       });
+    }
+
+    function setJobStatus(text) {
+      document.getElementById("jobStatus").textContent = text;
+    }
+
+    function setJobHint(text) {
+      document.getElementById("jobHint").textContent = text;
+    }
+
+    async function loadControlActions() {
+      try {
+        const res = await fetch("/api/control/actions");
+        if (!res.ok) throw new Error(`status=${res.status}`);
+        const payload = await res.json();
+        const actions = Array.isArray(payload.actions) ? payload.actions : [];
+        state.actionSpecs = actions;
+        const select = document.getElementById("actionSelect");
+        select.innerHTML = "";
+        for (const row of actions) {
+          const option = document.createElement("option");
+          option.value = String(row.action || "");
+          option.textContent = `${row.action} - ${row.description || ""}`;
+          select.appendChild(option);
+        }
+        if (actions.length > 0) {
+          select.value = "run-quick-validation-loop";
+          if (!select.value) select.selectedIndex = 0;
+          applyTemplate(select.value);
+        }
+        setJobHint("Actions loaded.");
+      } catch (error) {
+        setJobHint(`action load failed: ${String(error)}`);
+      }
+    }
+
+    function applyTemplate(action) {
+      const textarea = document.getElementById("commandParams");
+      const spec = state.actionSpecs.find((row) => String(row.action || "") === String(action || ""));
+      const template = spec && spec.template && typeof spec.template === "object" ? spec.template : {};
+      textarea.value = JSON.stringify(template, null, 2);
+    }
+
+    function attachCommandForm() {
+      const form = document.getElementById("commandForm");
+      const actionSelect = document.getElementById("actionSelect");
+      const templateBtn = document.getElementById("templateBtn");
+
+      actionSelect.addEventListener("change", () => {
+        applyTemplate(actionSelect.value);
+      });
+      templateBtn.addEventListener("click", () => {
+        applyTemplate(actionSelect.value);
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const action = String(actionSelect.value || "").trim();
+        const raw = String(document.getElementById("commandParams").value || "{}");
+        let params = {};
+        try {
+          const parsed = JSON.parse(raw);
+          params = parsed && typeof parsed === "object" ? parsed : {};
+        } catch (error) {
+          setJobStatus("job: invalid params");
+          setJobHint(`JSON parse error: ${String(error)}`);
+          return;
+        }
+
+        setJobStatus("job: submitting...");
+        try {
+          const res = await fetch("/api/control/jobs", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action, params }),
+          });
+          const payload = await res.json();
+          if (!res.ok) {
+            setJobStatus("job: submit failed");
+            setJobHint(`submit error: ${payload.detail || res.status}`);
+            appendLog({ severity: "error", event_type: "control.ui", message: `submit failed: ${payload.detail || res.status}` });
+            return;
+          }
+          const jobId = String(payload.job_id || "");
+          state.activeJobId = jobId;
+          setJobStatus(`job: queued ${jobId.slice(0, 8)}`);
+          setJobHint(`action=${action}`);
+          appendLog({ severity: "info", event_type: "control.ui", message: `job queued: ${action} (${jobId.slice(0, 8)})` });
+          startJobPolling(jobId);
+        } catch (error) {
+          setJobStatus("job: submit failed");
+          setJobHint(`network error: ${String(error)}`);
+        }
+      });
+    }
+
+    function startJobPolling(jobId) {
+      if (state.jobPollTimer) {
+        clearInterval(state.jobPollTimer);
+        state.jobPollTimer = null;
+      }
+      const tick = async () => {
+        try {
+          const res = await fetch(`/api/control/jobs/${encodeURIComponent(jobId)}`);
+          if (!res.ok) {
+            setJobStatus("job: poll failed");
+            return;
+          }
+          const job = await res.json();
+          const status = String(job.status || "unknown");
+          setJobStatus(`job: ${status} ${jobId.slice(0, 8)}`);
+          if (status === "completed" || status === "failed") {
+            if (state.jobPollTimer) {
+              clearInterval(state.jobPollTimer);
+              state.jobPollTimer = null;
+            }
+            const result = job.result && typeof job.result === "object" ? job.result : {};
+            const runId = String(result.run_id || job.run_id || "").trim();
+            if (status === "completed") {
+              appendLog({ severity: "info", event_type: "control.ui", message: `job completed: ${job.action || ""}` });
+              setJobHint(`completed: ${job.action || ""}`);
+              if (runId && document.getElementById("autoStreamRun").checked) {
+                document.getElementById("runId").value = runId;
+                connect(runId);
+              }
+            } else {
+              const err = String(job.stderr_tail || "").trim();
+              appendLog({ severity: "error", event_type: "control.ui", message: `job failed: ${job.action || ""} ${err.slice(-180)}` });
+              setJobHint(`failed: ${job.action || ""}`);
+            }
+          }
+        } catch (_) {
+          setJobStatus("job: poll error");
+        }
+      };
+      void tick();
+      state.jobPollTimer = setInterval(tick, 1400);
     }
 
     function connect(runId) {
