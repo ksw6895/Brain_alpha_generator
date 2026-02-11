@@ -383,6 +383,30 @@ class MetadataStore:
 
         return [_decode_event_record(dict(row)) for row in rows]
 
+    def list_event_records_for_run(self, *, run_id: str, limit: int = 2000) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 10000))
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, event_type, payload_json, created_at
+                FROM event_log
+                ORDER BY id ASC
+                """
+            ).fetchall()
+
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            record = _decode_event_record(dict(row))
+            payload = record.get("payload")
+            event = payload if isinstance(payload, dict) else {}
+            if str(event.get("run_id") or "") != str(run_id):
+                continue
+            out.append(record)
+
+        if len(out) > safe_limit:
+            return out[-safe_limit:]
+        return out
+
     def list_events(self, *, limit: int = 200) -> list[dict[str, Any]]:
         return [row["payload"] for row in self.list_event_records(limit=limit)]
 

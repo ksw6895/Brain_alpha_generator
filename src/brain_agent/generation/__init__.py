@@ -1,6 +1,22 @@
 """FastExpr generation helpers."""
 
 from .knowledge_pack import build_knowledge_packs
+from .budget import (
+    BudgetBlockedError,
+    LLMBudgetConfig,
+    aggregate_usage_from_events,
+    build_budget_console_payload,
+    build_budget_event_payload,
+    build_kpi_payload,
+    can_use_expansion_reserve,
+    compact_knowledge_bundle,
+    collect_seen_combinations,
+    enforce_alpha_prompt_budget,
+    estimate_cost_usd,
+    extract_prompt_completion_tokens,
+    load_llm_budget,
+    rough_token_estimate,
+)
 from .openai_provider import (
     LLMCallResult,
     OpenAILLMSettings,
@@ -24,6 +40,20 @@ __all__ = [
     "OpenAILLMSettings",
     "OpenAIProviderError",
     "OpenAIResponsesJSONClient",
+    "BudgetBlockedError",
+    "LLMBudgetConfig",
+    "aggregate_usage_from_events",
+    "build_budget_console_payload",
+    "build_budget_event_payload",
+    "build_kpi_payload",
+    "can_use_expansion_reserve",
+    "compact_knowledge_bundle",
+    "collect_seen_combinations",
+    "enforce_alpha_prompt_budget",
+    "estimate_cost_usd",
+    "extract_prompt_completion_tokens",
+    "load_llm_budget",
+    "rough_token_estimate",
     "ParseFailure",
     "build_alpha_maker_prompt",
     "build_fastexpr_prompt",

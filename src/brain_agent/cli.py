@@ -20,8 +20,17 @@ from .brain_api.diversity import get_diversity
 from .config import AppConfig
 from .exceptions import ManualActionRequired
 from .agents.llm_orchestrator import LLMOrchestrator
+from .generation.budget import (
+    BudgetBlockedError,
+    aggregate_usage_from_events,
+    compact_knowledge_bundle,
+    collect_seen_combinations,
+    enforce_alpha_prompt_budget,
+    load_llm_budget,
+)
 from .generation.knowledge_pack import build_knowledge_packs
 from .generation.openai_provider import OpenAILLMSettings, OpenAIProviderError
+from .generation.prompting import build_alpha_maker_prompt
 from .metadata.sync import sync_all_metadata, sync_simulation_options
 from .retrieval.pack_builder import (
     RetrievalPack,
@@ -175,6 +184,60 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, ensure_ascii=False))
         return 0 if result.success else 2
 
+    if args.command == "estimate-prompt-cost":
+        retrieval_pack = RetrievalPack.model_validate(
+            json.loads(Path(args.retrieval_pack).read_text(encoding="utf-8"))
+        )
+        idea: IdeaSpec
+        if args.idea:
+            idea = _load_idea_spec(json.loads(Path(args.idea).read_text(encoding="utf-8")))
+        else:
+            idea = _build_idea_from_retrieval_pack(retrieval_pack)
+
+        knowledge_bundle = _load_knowledge_bundle_dir(args.knowledge_pack_dir)
+        budget = load_llm_budget(args.llm_budget_config)
+        run_id = str(args.run_id or f"estimate-{idea.idea_id}")
+
+        event_payloads = [row["payload"] for row in store.list_event_records(limit=5000) if isinstance(row.get("payload"), dict)]
+        usage = aggregate_usage_from_events(event_payloads, run_id=run_id)
+        seen_combo_keys = collect_seen_combinations(event_payloads, run_id=run_id)
+
+        result = enforce_alpha_prompt_budget(
+            idea=idea,
+            retrieval_pack=retrieval_pack,
+            knowledge_bundle=knowledge_bundle,
+            budget=budget,
+            usage=usage,
+            seen_combo_keys=seen_combo_keys,
+            prompt_builder=lambda item_idea, pack, bundle: build_alpha_maker_prompt(
+                item_idea,
+                pack,
+                knowledge_pack=compact_knowledge_bundle(bundle, pack),
+            ),
+            max_output_tokens=args.max_output_tokens,
+        )
+
+        payload = {
+            "ok": result.allowed,
+            "run_id": run_id,
+            "idea_id": idea.idea_id,
+            "prompt_tokens_rough": result.evaluation.prompt_tokens_rough,
+            "completion_tokens_budget": result.evaluation.completion_tokens_budget,
+            "projected_batch_tokens": result.evaluation.projected_batch_tokens,
+            "projected_day_tokens": result.evaluation.projected_day_tokens,
+            "selected_topk": result.evaluation.selected_topk,
+            "lane_ratio": result.evaluation.lane_ratio,
+            "coverage_kpi": result.evaluation.coverage_kpi,
+            "novelty_kpi": result.evaluation.novelty_kpi,
+            "fallback_count": result.evaluation.fallback_count,
+            "budget_exceeded": result.evaluation.exceeded,
+            "fallback_steps": result.fallback_steps,
+        }
+        if args.output:
+            Path(args.output).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0 if result.allowed else 2
+
     if args.command == "run-idea-agent":
         payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
@@ -195,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_idea_regenerations=args.max_regenerations,
                 llm_provider=args.llm_provider,
                 llm_settings=llm_settings,
+                llm_budget_config=args.llm_budget_config,
             )
             idea, run_id = orchestrator.run_idea_agent(
                 input_payload=payload,
@@ -242,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_alpha_regenerations=args.max_regenerations,
                 llm_provider=args.llm_provider,
                 llm_settings=llm_settings,
+                llm_budget_config=args.llm_budget_config,
             )
             candidate, run_id = orchestrator.run_alpha_maker(
                 idea=idea,
@@ -252,6 +317,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         except OpenAIProviderError as exc:
             print(json.dumps({"error": "openai_provider_error", "message": str(exc)}, ensure_ascii=False), file=sys.stderr)
+            return 2
+        except BudgetBlockedError as exc:
+            print(json.dumps({"error": "budget_blocked", "message": str(exc)}, ensure_ascii=False), file=sys.stderr)
             return 2
         if args.output:
             Path(args.output).write_text(candidate.model_dump_json(indent=2), encoding="utf-8")
@@ -389,12 +457,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_kpack.add_argument("--output-dir", default="data/meta/index")
     p_kpack.add_argument("--meta-dir", default=str(configure_default_meta_dir()))
 
+    p_estimate = sub.add_parser("estimate-prompt-cost", help="Estimate step-20 budget with fallback simulation")
+    p_estimate.add_argument("--retrieval-pack", required=True, help="Path to retrieval pack JSON")
+    p_estimate.add_argument("--idea", default=None, help="Optional IdeaSpec JSON path")
+    p_estimate.add_argument("--knowledge-pack-dir", default="data/meta/index")
+    p_estimate.add_argument("--llm-budget-config", default="configs/llm_budget.json")
+    p_estimate.add_argument("--run-id", default=None, help="Optional run id for batch/day usage projection")
+    p_estimate.add_argument("--max-output-tokens", type=int, default=_env_int("BRAIN_LLM_MAX_OUTPUT_TOKENS", 2200))
+    p_estimate.add_argument("--output", default=None, help="Optional output path for JSON report")
+
     p_idea = sub.add_parser("run-idea-agent", help="Run Idea Researcher contract parser/repair flow (step-19)")
     p_idea.add_argument("--input", required=True, help="Path to idea input JSON")
     p_idea.add_argument("--raw-output", default=None, help="Optional raw LLM output text file for parse/repair tests")
     p_idea.add_argument("--run-id", default=None, help="Optional run id override")
     p_idea.add_argument("--max-regenerations", type=int, default=2)
     p_idea.add_argument("--meta-dir", default=str(configure_default_meta_dir()))
+    p_idea.add_argument("--llm-budget-config", default="configs/llm_budget.json")
     p_idea.add_argument(
         "--llm-provider",
         choices=["openai", "mock", "auto"],
@@ -415,6 +493,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_alpha.add_argument("--run-id", default=None, help="Optional run id override")
     p_alpha.add_argument("--max-regenerations", type=int, default=2)
     p_alpha.add_argument("--meta-dir", default=str(configure_default_meta_dir()))
+    p_alpha.add_argument("--llm-budget-config", default="configs/llm_budget.json")
     p_alpha.add_argument(
         "--llm-provider",
         choices=["openai", "mock", "auto"],
@@ -473,6 +552,38 @@ def _load_idea_spec(payload: Any) -> IdeaSpec:
 
 def _validate_idea_payload(payload: dict[str, Any]) -> IdeaSpec:
     return IdeaSpec.model_validate(payload)
+
+
+def _build_idea_from_retrieval_pack(pack: RetrievalPack) -> IdeaSpec:
+    return IdeaSpec(
+        idea_id=pack.idea_id,
+        hypothesis=pack.query or f"budget-estimate for {pack.idea_id}",
+        keywords_for_retrieval=[token for token in (pack.query or "").split() if token][:12],
+        candidate_subcategories=list(pack.selected_subcategories),
+        target=pack.target,
+    )
+
+
+def _load_knowledge_bundle_dir(path: str | Path) -> dict[str, Any]:
+    directory = Path(path)
+    required = {
+        "operator_signature_pack": directory / "operator_signature_pack.json",
+        "simulation_settings_allowed_pack": directory / "simulation_settings_allowed_pack.json",
+        "fastexpr_examples_pack": directory / "fastexpr_examples_pack.json",
+        "fastexpr_visual_pack": directory / "fastexpr_visual_pack.json",
+    }
+
+    bundle: dict[str, Any] = {}
+    missing: list[str] = []
+    for key, file_path in required.items():
+        if not file_path.exists():
+            missing.append(str(file_path))
+            continue
+        bundle[key] = json.loads(file_path.read_text(encoding="utf-8"))
+
+    if missing:
+        raise ValueError("Missing required knowledge pack files: " + ", ".join(missing))
+    return bundle
 
 
 def _save_retrieval_pack(path: str | None, pack: RetrievalPack) -> None:

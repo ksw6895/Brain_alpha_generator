@@ -10,6 +10,20 @@ from pathlib import Path
 from typing import Any, Callable, Literal
 
 from ..constants import DEFAULT_META_DIR
+from ..generation.budget import (
+    BudgetBlockedError,
+    BudgetEnforcementResult,
+    LLMBudgetConfig,
+    aggregate_usage_from_events,
+    build_budget_event_payload,
+    collect_seen_combinations,
+    compact_knowledge_bundle,
+    enforce_alpha_prompt_budget,
+    estimate_cost_usd,
+    extract_prompt_completion_tokens,
+    load_llm_budget,
+    rough_token_estimate,
+)
 from ..generation.openai_provider import (
     LLMCallResult,
     OpenAILLMSettings,
@@ -59,6 +73,7 @@ class LLMOrchestrator:
         alpha_generator: AlphaGenerator | None = None,
         meta_dir: str | Path = DEFAULT_META_DIR,
         retrieval_budget_config: str | Path = "configs/retrieval_budget.json",
+        llm_budget_config: str | Path = "configs/llm_budget.json",
         max_idea_regenerations: int = 2,
         max_alpha_regenerations: int = 2,
         llm_provider: ProviderMode = "auto",
@@ -71,6 +86,7 @@ class LLMOrchestrator:
         self.alpha_generator = alpha_generator
         self.meta_dir = Path(meta_dir)
         self.retrieval_budget = load_retrieval_budget(retrieval_budget_config)
+        self.llm_budget: LLMBudgetConfig = load_llm_budget(llm_budget_config)
         self.max_idea_regenerations = max(0, int(max_idea_regenerations))
         self.max_alpha_regenerations = max(0, int(max_alpha_regenerations))
 
@@ -204,11 +220,14 @@ class LLMOrchestrator:
         raw_candidate = raw_output
         generation: LLMCallResult | None = None
         if raw_candidate is None:
-            prompt = build_alpha_maker_prompt(
-                idea,
-                retrieval_pack,
-                knowledge_pack=knowledge_bundle,
+            budget_result = self._apply_alpha_budget_policy(
+                run_id=active_run_id,
+                idea=idea,
+                retrieval_pack=retrieval_pack,
+                knowledge_bundle=knowledge_bundle,
             )
+            retrieval_pack = budget_result.pack
+            prompt = budget_result.prompt
             generation = self._generate_alpha(prompt, idea, retrieval_pack, knowledge_bundle)
             raw_candidate = generation.text
 
@@ -447,6 +466,132 @@ class LLMOrchestrator:
             model=self.llm_settings.model,
         )
 
+    def _apply_alpha_budget_policy(
+        self,
+        *,
+        run_id: str,
+        idea: IdeaSpec,
+        retrieval_pack: RetrievalPack,
+        knowledge_bundle: dict[str, Any],
+    ) -> BudgetEnforcementResult:
+        events = self._recent_event_payloads(limit=5000)
+        usage = aggregate_usage_from_events(events, run_id=run_id)
+        seen_combo_keys = collect_seen_combinations(events, run_id=run_id)
+
+        result = enforce_alpha_prompt_budget(
+            idea=idea,
+            retrieval_pack=retrieval_pack,
+            knowledge_bundle=knowledge_bundle,
+            budget=self.llm_budget,
+            usage=usage,
+            seen_combo_keys=seen_combo_keys,
+            prompt_builder=lambda item_idea, pack, bundle: build_alpha_maker_prompt(
+                item_idea,
+                pack,
+                knowledge_pack=compact_knowledge_bundle(bundle, pack),
+            ),
+            max_output_tokens=self.llm_settings.max_output_tokens,
+        )
+
+        for step in result.fallback_steps:
+            payload = build_budget_event_payload(
+                step_name="step-20-budget",
+                budget=self.llm_budget,
+                usage=result.usage,
+                evaluation=result.evaluation,
+                extra={
+                    "prompt_tokens": int(step.get("prompt_tokens") or 0),
+                    "completion_tokens": int(step.get("completion_tokens") or 0),
+                    "selected_topk": step.get("selected_topk") if isinstance(step.get("selected_topk"), dict) else {},
+                    "budget_exceeded": step.get("budget_exceeded")
+                    if isinstance(step.get("budget_exceeded"), dict)
+                    else {},
+                    "fallback_phase": str(step.get("phase") or "unknown"),
+                    "fallback_factor": float(step.get("factor") or 0.0),
+                    "fallback_count": int(step.get("fallback_count") or 0),
+                },
+            )
+            self.event_bus.publish(
+                event_type="budget.fallback_applied",
+                run_id=run_id,
+                idea_id=idea.idea_id,
+                stage="budget",
+                message="Fallback top-k applied for budget control",
+                severity="warn",
+                payload=payload,
+            )
+
+        if result.allowed:
+            self.event_bus.publish(
+                event_type="budget.check_passed",
+                run_id=run_id,
+                idea_id=idea.idea_id,
+                stage="budget",
+                message="Prompt budget check passed",
+                severity="info",
+                payload=build_budget_event_payload(
+                    step_name="step-20-budget",
+                    budget=self.llm_budget,
+                    usage=result.usage,
+                    evaluation=result.evaluation,
+                    extra={"fallback_applied": bool(result.fallback_steps)},
+                ),
+            )
+            if result.evaluation.explore_floor_preserved:
+                self.event_bus.publish(
+                    event_type="budget.explore_floor_preserved",
+                    run_id=run_id,
+                    idea_id=idea.idea_id,
+                    stage="budget",
+                    message="Explore lane floor preserved",
+                    severity="info",
+                    payload=build_budget_event_payload(
+                        step_name="step-20-budget",
+                        budget=self.llm_budget,
+                        usage=result.usage,
+                        evaluation=result.evaluation,
+                    ),
+                )
+            return result
+
+        failed_payload = build_budget_event_payload(
+            step_name="step-20-budget",
+            budget=self.llm_budget,
+            usage=result.usage,
+            evaluation=result.evaluation,
+            extra={"fallback_applied": bool(result.fallback_steps)},
+        )
+        self.event_bus.publish(
+            event_type="budget.check_failed",
+            run_id=run_id,
+            idea_id=idea.idea_id,
+            stage="budget",
+            message="Prompt budget check failed",
+            severity="warn",
+            payload=failed_payload,
+        )
+        self.event_bus.publish(
+            event_type="budget.blocked",
+            run_id=run_id,
+            idea_id=idea.idea_id,
+            stage="budget",
+            message="Budget policy blocked alpha generation",
+            severity="error",
+            payload=failed_payload,
+        )
+
+        reasons = [key for key, value in result.evaluation.exceeded.items() if value]
+        raise BudgetBlockedError("alpha generation blocked by budget policy: " + ",".join(reasons))
+
+    def _recent_event_payloads(self, *, limit: int = 5000) -> list[dict[str, Any]]:
+        rows = self.store.list_event_records(limit=limit)
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            payload = row.get("payload")
+            if isinstance(payload, dict):
+                out.append(payload)
+        return out
+
     def _emit_usage_point(
         self,
         *,
@@ -459,14 +604,23 @@ class LLMOrchestrator:
     ) -> None:
         prompt_chars = len(prompt or "")
         completion_chars = len(completion or "")
+        prompt_tokens_rough = rough_token_estimate(prompt_chars)
+        completion_tokens_rough = rough_token_estimate(completion_chars)
+        prompt_tokens = prompt_tokens_rough
+        completion_tokens = completion_tokens_rough
         payload: dict[str, Any] = {
             "prompt_chars": prompt_chars,
             "completion_chars": completion_chars,
-            "prompt_tokens_rough": _rough_token_estimate(prompt_chars),
-            "completion_tokens_rough": _rough_token_estimate(completion_chars),
+            "prompt_tokens_rough": prompt_tokens_rough,
+            "completion_tokens_rough": completion_tokens_rough,
         }
 
         if llm_call is not None:
+            prompt_tokens, completion_tokens = extract_prompt_completion_tokens(
+                llm_call.usage,
+                fallback_prompt=prompt_tokens_rough,
+                fallback_completion=completion_tokens_rough,
+            )
             payload.update(
                 {
                     "provider": llm_call.provider,
@@ -480,6 +634,19 @@ class LLMOrchestrator:
                     },
                 }
             )
+
+        total_tokens = max(0, prompt_tokens + completion_tokens)
+        payload.update(
+            {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "estimated_cost_usd": round(
+                    estimate_cost_usd(prompt_tokens, completion_tokens, self.llm_budget),
+                    8,
+                ),
+            }
+        )
 
         self.event_bus.publish(
             event_type="llm.usage_point",
@@ -659,10 +826,6 @@ def _unique(values: list[str]) -> list[str]:
         seen.add(value)
         out.append(value)
     return out
-
-
-def _rough_token_estimate(char_count: int) -> int:
-    return max(0, int(char_count / 4))
 
 
 def _new_run_id() -> str:

@@ -76,10 +76,23 @@ PYTHONPATH=src python3 -m brain_agent.cli run-alpha-maker \
 
 OpenAI 키를 아직 넣지 않았거나 API 호출 없이 계약만 검증하려면 `--llm-provider mock`을 사용합니다.
 
-9. (선택) 실시간 이벤트 WebSocket 브리지 서버 실행
+9. step-20 예산 추정/폴백 점검
+```bash
+PYTHONPATH=src python3 -m brain_agent.cli estimate-prompt-cost \
+  --retrieval-pack /tmp/retrieval_pack.json \
+  --knowledge-pack-dir data/meta/index \
+  --llm-budget-config configs/llm_budget.json \
+  --output /tmp/budget_estimate.json
+```
+
+10. (선택) 실시간 이벤트 WebSocket 브리지 서버 실행
 ```bash
 PYTHONPATH=src python3 -m brain_agent.cli serve-live-events --host 127.0.0.1 --port 8765
 ```
+
+예산/품질 조회 API:
+- `GET /api/runs/{run_id}/budget`
+- `GET /api/runs/{run_id}/kpi`
 
 > biometrics 인증이 필요한 계정이면 위 스크립트가 URL을 안내하고 터미널에서 대기합니다.
 > 브라우저에서 인증 완료 후 Enter를 누르면 진행됩니다.
@@ -145,6 +158,7 @@ BRAIN_INTERACTIVE_LOGIN=0 PYTHONPATH=src bash scripts/sync_options.sh
 - 파이프라인 오케스트레이터: `src/brain_agent/agents/pipeline.py`
 - CLI 진입점: `src/brain_agent/cli.py`
 - retrieval budget 설정: `configs/retrieval_budget.json`
+- llm budget 설정: `configs/llm_budget.json`
 
 ## 샘플 Fixture
 

@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 
 from ..config import AppConfig
+from ..generation.budget import build_budget_console_payload, build_kpi_payload, load_llm_budget
 from ..runtime.event_bus import EventBus
 from ..storage.sqlite_store import MetadataStore
 
@@ -21,6 +22,7 @@ def create_app(
     config = AppConfig()
     sqlite_store = store or MetadataStore(config.paths.db_path)
     bus = event_bus or EventBus(store=sqlite_store)
+    llm_budget = load_llm_budget("configs/llm_budget.json")
 
     app = FastAPI(title="Brain Agent Live Stream", version="0.1.0")
     app.state.store = sqlite_store
@@ -37,6 +39,29 @@ def create_app(
             "count": len(records),
             "events": [row["payload"] for row in records],
         }
+
+    @app.get("/api/runs/{run_id}/budget")
+    def run_budget(run_id: str, limit: int = Query(default=2000, ge=1, le=10000)) -> dict[str, Any]:
+        run_records = sqlite_store.list_event_records_for_run(run_id=run_id, limit=limit)
+        all_records = sqlite_store.list_event_records(limit=min(5000, max(500, limit)))
+        run_events = [row["payload"] for row in run_records if isinstance(row.get("payload"), dict)]
+        all_events = [row["payload"] for row in all_records if isinstance(row.get("payload"), dict)]
+        return build_budget_console_payload(
+            run_id=run_id,
+            run_events=run_events,
+            all_events=all_events,
+            budget=llm_budget,
+        )
+
+    @app.get("/api/runs/{run_id}/kpi")
+    def run_kpi(run_id: str, limit: int = Query(default=2000, ge=1, le=10000)) -> dict[str, Any]:
+        run_records = sqlite_store.list_event_records_for_run(run_id=run_id, limit=limit)
+        run_events = [row["payload"] for row in run_records if isinstance(row.get("payload"), dict)]
+        return build_kpi_payload(
+            run_id=run_id,
+            run_events=run_events,
+            budget=llm_budget,
+        )
 
     @app.websocket("/ws/live")
     async def ws_live(

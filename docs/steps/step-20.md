@@ -135,14 +135,14 @@ PYTHONPATH=src python3 -m brain_agent.cli estimate-prompt-cost \
 7. WebSocket 또는 REST 조회로 Budget Console UI가 실시간 갱신된다
 
 ## 6) 완료 정의 (Definition of Done)
-- [ ] budget config 파일 도입
-- [ ] 예산 검사 + fallback 로직 구현
-- [ ] 호출 토큰/비용 로그 저장
-- [ ] 배치 단위 상한 적용
-- [ ] exploit/explore 이중 예산이 강제됨
-- [ ] 리서치 품질 KPI(coverage/novelty)가 수집됨
-- [ ] 대시보드용 telemetry 이벤트 계약이 고정됨
-- [ ] run 단위 budget/kpi 조회 API가 정의됨
+- [x] budget config 파일 도입
+- [x] 예산 검사 + fallback 로직 구현
+- [x] 호출 토큰/비용 로그 저장
+- [x] 배치 단위 상한 적용
+- [x] exploit/explore 이중 예산이 강제됨
+- [x] 리서치 품질 KPI(coverage/novelty)가 수집됨
+- [x] 대시보드용 telemetry 이벤트 계약이 고정됨
+- [x] run 단위 budget/kpi 조회 API가 정의됨
 
 ## 7) 다음 step 인계
 - step-21은 budget 레이어를 통과한 생성 결과만 받아 validation-first loop를 완성한다.
