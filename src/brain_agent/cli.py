@@ -31,6 +31,7 @@ from .generation.budget import (
 from .generation.knowledge_pack import build_knowledge_packs
 from .generation.openai_provider import OpenAILLMSettings, OpenAIProviderError
 from .generation.prompting import build_alpha_maker_prompt
+from .generation.validation_gate import ValidationGate
 from .metadata.sync import sync_all_metadata, sync_simulation_options
 from .retrieval.pack_builder import (
     RetrievalPack,
@@ -38,6 +39,7 @@ from .retrieval.pack_builder import (
     load_retrieval_budget,
     summarize_pack_for_event,
 )
+from .runtime.event_bus import EventBus
 from .schemas import AlphaResult, CandidateAlpha, IdeaSpec, SimulationTarget
 from .simulation.runner import SimulationRunner
 from .storage.sqlite_store import MetadataStore
@@ -340,6 +342,138 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "run-validation-loop":
+        try:
+            from .agents.validation_loop import ValidationLoopOrchestrator
+            from .evaluation.evaluator import Evaluator
+            from .feedback.mutator import FeedbackMutator
+        except ModuleNotFoundError as exc:
+            print(
+                json.dumps(
+                    {
+                        "error": "missing_dependency",
+                        "message": f"validation loop import failed: {exc}",
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+
+        idea = _load_idea_spec(json.loads(Path(args.idea).read_text(encoding="utf-8")))
+        retrieval_pack = RetrievalPack.model_validate(
+            json.loads(Path(args.retrieval_pack).read_text(encoding="utf-8"))
+        )
+        raw_output = Path(args.raw_output).read_text(encoding="utf-8") if args.raw_output else None
+
+        llm_settings = OpenAILLMSettings(
+            model=args.llm_model,
+            reasoning_effort=args.reasoning_effort,
+            verbosity=args.verbosity,
+            reasoning_summary=args.reasoning_summary,
+            max_output_tokens=args.max_output_tokens,
+        )
+        event_bus = EventBus(store=store)
+
+        try:
+            orchestrator = LLMOrchestrator(
+                store=store,
+                event_bus=event_bus,
+                meta_dir=args.meta_dir,
+                max_alpha_regenerations=args.max_regenerations,
+                llm_provider=args.llm_provider,
+                llm_settings=llm_settings,
+                llm_budget_config=args.llm_budget_config,
+            )
+            candidate, run_id = orchestrator.run_alpha_maker(
+                idea=idea,
+                retrieval_pack=retrieval_pack,
+                knowledge_pack_dir=args.knowledge_pack_dir,
+                run_id=args.run_id,
+                raw_output=raw_output,
+            )
+        except OpenAIProviderError as exc:
+            print(json.dumps({"error": "openai_provider_error", "message": str(exc)}, ensure_ascii=False), file=sys.stderr)
+            return 2
+        except BudgetBlockedError as exc:
+            print(json.dumps({"error": "budget_blocked", "message": str(exc)}, ensure_ascii=False), file=sys.stderr)
+            return 2
+
+        event_bus.publish(
+            event_type="agent.validation_handoff",
+            run_id=run_id,
+            idea_id=idea.idea_id,
+            stage="validation",
+            message="Candidate handed off to validation-first loop",
+            severity="info",
+            payload={
+                "candidate_lane": candidate.generation_notes.candidate_lane,
+            },
+        )
+
+        validator = StaticValidator(
+            operators=store.list_operators(),
+            fields=store.list_data_fields(),
+        )
+        gate = ValidationGate(validator)
+
+        if args.skip_simulation:
+            simulation_runner = SimulationRunner(
+                session=None,
+                store=store,
+                fetch_recordsets=False,
+                enforce_validation_gate=True,
+            )
+        else:
+            session = _session_from_args(args)
+            simulation_runner = SimulationRunner(
+                session=session,
+                store=store,
+                fetch_recordsets=not bool(args.skip_recordsets),
+                enforce_validation_gate=True,
+            )
+
+        evaluator = Evaluator(event_bus=event_bus)
+        mutator = FeedbackMutator(event_bus=event_bus)
+        loop = ValidationLoopOrchestrator(
+            store=store,
+            gate=gate,
+            simulation_runner=simulation_runner,
+            evaluator=evaluator,
+            mutator=mutator,
+            event_bus=event_bus,
+            max_repair_attempts=args.max_repair_attempts,
+            stop_on_repeated_error=args.stop_on_repeated_error,
+            meta_dir=args.meta_dir,
+        )
+        loop_result = loop.run(
+            idea=idea,
+            candidate=candidate,
+            retrieval_pack=retrieval_pack,
+            run_id=run_id,
+            simulate=not bool(args.skip_simulation),
+        )
+
+        validated_out = [loop_result.candidate.model_dump(mode="python")] if loop_result.validation_passed else []
+        if args.output:
+            Path(args.output).write_text(json.dumps(validated_out, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        report_payload = {
+            **loop_result.to_payload(),
+            "idea_id": idea.idea_id,
+            "output": args.output,
+            "llm_provider": args.llm_provider,
+            "llm_model": args.llm_model,
+            "skip_simulation": bool(args.skip_simulation),
+        }
+        if args.report_output:
+            Path(args.report_output).write_text(
+                json.dumps(report_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        print(json.dumps(report_payload, ensure_ascii=False))
+        return 0 if loop_result.validation_passed else 2
+
     if args.command == "serve-live-events":
         try:
             import uvicorn
@@ -357,7 +491,6 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         try:
-            from .runtime.event_bus import EventBus
             from .server.app import create_app
         except ModuleNotFoundError as exc:
             print(
@@ -505,6 +638,35 @@ def build_parser() -> argparse.ArgumentParser:
     p_alpha.add_argument("--reasoning-summary", choices=["auto", "concise", "detailed"], default=str(os.getenv("BRAIN_LLM_REASONING_SUMMARY") or "auto"))
     p_alpha.add_argument("--max-output-tokens", type=int, default=_env_int("BRAIN_LLM_MAX_OUTPUT_TOKENS", 2200))
     p_alpha.add_argument("--output", default="/tmp/candidate_alpha.json")
+
+    p_vloop = sub.add_parser("run-validation-loop", help="Run step-21 validation-first generation/repair loop")
+    p_vloop.add_argument("--credentials", default=None)
+    p_vloop.add_argument("--interactive-login", action="store_true")
+    p_vloop.add_argument("--idea", required=True, help="Path to IdeaSpec JSON")
+    p_vloop.add_argument("--retrieval-pack", required=True, help="Path to retrieval pack JSON")
+    p_vloop.add_argument("--knowledge-pack-dir", default="data/meta/index")
+    p_vloop.add_argument("--raw-output", default=None, help="Optional raw LLM output text file for parse/repair tests")
+    p_vloop.add_argument("--run-id", default=None, help="Optional run id override")
+    p_vloop.add_argument("--max-regenerations", type=int, default=2)
+    p_vloop.add_argument("--max-repair-attempts", type=int, default=3)
+    p_vloop.add_argument("--stop-on-repeated-error", action="store_true", default=True)
+    p_vloop.add_argument("--no-stop-on-repeated-error", dest="stop_on_repeated_error", action="store_false")
+    p_vloop.add_argument("--skip-simulation", action="store_true")
+    p_vloop.add_argument("--skip-recordsets", action="store_true")
+    p_vloop.add_argument("--meta-dir", default=str(configure_default_meta_dir()))
+    p_vloop.add_argument("--llm-budget-config", default="configs/llm_budget.json")
+    p_vloop.add_argument(
+        "--llm-provider",
+        choices=["openai", "mock", "auto"],
+        default=str(os.getenv("BRAIN_LLM_PROVIDER") or "openai"),
+    )
+    p_vloop.add_argument("--llm-model", default=str(os.getenv("BRAIN_LLM_MODEL") or "gpt-5.2"))
+    p_vloop.add_argument("--reasoning-effort", choices=["minimal", "low", "medium", "high"], default=str(os.getenv("BRAIN_LLM_REASONING_EFFORT") or "medium"))
+    p_vloop.add_argument("--verbosity", choices=["low", "medium", "high"], default=str(os.getenv("BRAIN_LLM_VERBOSITY") or "medium"))
+    p_vloop.add_argument("--reasoning-summary", choices=["auto", "concise", "detailed"], default=str(os.getenv("BRAIN_LLM_REASONING_SUMMARY") or "auto"))
+    p_vloop.add_argument("--max-output-tokens", type=int, default=_env_int("BRAIN_LLM_MAX_OUTPUT_TOKENS", 2200))
+    p_vloop.add_argument("--output", default="/tmp/validated_candidates.json")
+    p_vloop.add_argument("--report-output", default=None)
 
     p_live = sub.add_parser("serve-live-events", help="Serve FastAPI live event bridge (step-19)")
     p_live.add_argument("--host", default="127.0.0.1")

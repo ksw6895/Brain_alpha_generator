@@ -62,6 +62,8 @@ class GenerationNotes(BaseModel):
     used_fields: list[str] = Field(default_factory=list)
     used_operators: list[str] = Field(default_factory=list)
     candidate_lane: Literal["exploit", "explore"] | None = None
+    validation_passed: bool | None = None
+    validation_attempts: int = 0
 
 
 class CandidateAlpha(BaseModel):

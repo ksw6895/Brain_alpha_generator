@@ -35,6 +35,7 @@ from .prompting import (
     parse_with_format_repair,
     repair_json_text,
 )
+from .validation_gate import ValidationGate, ValidationGateResult, ValidationIssue
 
 __all__ = [
     "LLMCallResult",
@@ -66,4 +67,7 @@ __all__ = [
     "parse_with_format_repair",
     "repair_json_text",
     "build_knowledge_packs",
+    "ValidationGate",
+    "ValidationGateResult",
+    "ValidationIssue",
 ]

@@ -12,12 +12,12 @@ WorldQuant BRAIN용 FastExpr 알파를 LLM 기반 멀티 에이전트로 생성�
 - 메타데이터 동기화 파이프라인은 이미 구현됨.
 - operators/datasets/data-fields는 로컬 DB와 JSON 인덱스에 저장됨.
 - 정적 검증기, 시뮬레이터, 평가기는 구현됨.
-- 미완성 영역: validation-first 생성/수정 루프(step-21)와 시뮬/평가 운영 완성도.
+- 2026-02-12 기준 step-21(validation-first 생성/수정 루프 + 시뮬/평가 이벤트 계약) 구현 완료.
 - 2026-02-11 기준 step-17(Top-K retrieval pack)은 코드 구현 및 검증 완료.
 - 2026-02-11 기준 step-18(FastExpr knowledge pack)은 코드 구현 및 검증 완료.
 - 2026-02-11 기준 step-19(2-agent 계약 + 이벤트 스트림 + OpenAI SDK 경로)는 코드 구현 및 검증 완료.
 - 2026-02-12 기준 step-20은 백엔드/프론트(F20 Reactor HUD 프로토타입) + 실측 백테스트 기반 보정까지 완료.
-- 현재 다음 우선 구현 대상: step-21 (validation-first 생성/수정 루프)
+- 현재 우선 작업: diversity/운영 자동화(비용/통과율/중복률) 고도화
 
 ## 절대 원칙
 1. 전체 metadata를 LLM prompt에 직접 넣지 않는다.

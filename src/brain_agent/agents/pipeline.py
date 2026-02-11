@@ -134,6 +134,14 @@ class BrainPipeline:
 
             # Alpha IDs do not directly map to ideas, so we mutate all ideas conservatively.
             for candidate in by_idea.values():
-                generated.extend(self.mutator.propose_mutations(candidate, card, max_variants=3))
+                generated.extend(
+                    self.mutator.propose_mutations(
+                        candidate,
+                        card,
+                        max_variants=3,
+                        run_id="pipeline-cycle",
+                        parent_alpha_id=card.alpha_id,
+                    )
+                )
 
         return generated

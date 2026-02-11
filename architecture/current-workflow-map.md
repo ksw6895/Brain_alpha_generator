@@ -1,6 +1,6 @@
 # Current Workflow Map
 
-이 문서는 2026-02-11 기준 `main` 코드와 `docs/steps/step-17~21.md` 계획을 함께 반영한다.  
+이 문서는 2026-02-12 기준 `main` 코드와 `docs/steps/step-17~21.md` 계획을 함께 반영한다.
 목표는 "현재 실행 경로"와 "다음 구현 경로"를 혼동하지 않게 정리하는 것이다.
 
 ## 1) 정합성 점검 요약 (코드 vs 단계 계획)
@@ -11,11 +11,11 @@
   - 메타 인덱스/진행 파일: `data/meta/*`
   - 결과/레코드셋: `data/simulation_results/*`, `data/recordsets/*`
   - DB: `data/brain_agent.db`
-- 이벤트 로그는 이미 존재하지만 범위가 제한적이다.
-  - 항상 기록: `simulation_skipped_duplicate`, `simulation_completed`, `retrieval.pack_built`
-  - `BrainPipeline` 경로에서만 기록: `metadata_sync`, `cycle_completed`
+- 이벤트 로그는 step-21 기준으로 생성/검증/시뮬/평가 전 구간을 기록한다.
+  - 핵심 기록: `agent.alpha_generated`, `validation.*`, `simulation.enqueued|simulation.started|simulation.completed|simulation_completed`, `evaluation.completed`, `mutation.child_created`
+  - legacy alias(`simulation_completed`)는 마이그레이션 기간 동안 병행 유지한다.
 - step-19의 2-agent 계약/parse-repair/event envelope/WS 브리지 골격은 구현됨.
-- step-20~21의 budget gate/validation loop/Arena-Evolutionary 확장은 구현 예정 상태다.
+- step-20 budget gate/telemetry/Reactor HUD와 step-21 validation-first loop/Arena-Evolutionary 이벤트 계약은 구현되었다.
 
 ## 2) 현재 실행 가능 흐름 (CLI 중심, 단순 직렬 + 저장/로그 레인)
 
@@ -69,13 +69,13 @@ flowchart TD
 6. 후보 JSON 준비 후 `PYTHONPATH=src bash scripts/simulate_candidates.sh <input.json>`
 7. `PYTHONPATH=src bash scripts/evaluate_results.sh <result.json>`
 
-## 3) Step-20~21 확장 흐름 (step-19 구현 완료 기준, 일부 구현 예정)
+## 3) Step-20~21 운영 확장 흐름 (구현 반영)
 
 핵심: 프론트엔드를 맨 마지막으로 미루지 않고, 생성/검증/예산/시뮬 파이프라인과 병렬로 관측 계약을 함께 고정한다.
 
 ```mermaid
 flowchart TD
-  subgraph PLAN_EXEC["Execution/Control Lane (구현 예정)"]
+  subgraph PLAN_EXEC["Execution/Control Lane (구현 반영)"]
     IDEA["Idea Researcher"] --> RPACK["Retrieval Pack (Top-K + visual_graph)"]
     RPACK --> KPACK["Knowledge Pack (+ visual pack)"]
     KPACK --> AMAKE["Alpha Maker"]
@@ -92,7 +92,7 @@ flowchart TD
     MUT --> AMAKE
   end
 
-  subgraph PLAN_OBS["Observability/UI Lane (F-Track, 구현 예정)"]
+  subgraph PLAN_OBS["Observability/UI Lane (F-Track, 구현 반영)"]
     HUB["Event Bus + FastAPI WS"] --> NC["Neural Cosmos"]
     HUB --> BT["Brain Terminal"]
     HUB --> BC["Budget Console"]
@@ -148,13 +148,13 @@ flowchart TD
 - `BrainPipeline` 참조 오케스트레이터는 존재하나 기본 운영 경로는 아직 스크립트/CLI 중심 (`src/brain_agent/agents/pipeline.py`)
 - FastAPI/uvicorn 의존성이 설치되지 않은 환경에서는 WS 서버 실행 검증이 제한됨
 
-### 구현 예정
-- step-20 budget/토큰 fallback 정책 + KPI telemetry 고도화
-- step-21 validation-first repair loop + simulation queue 진입 강제
-- Next.js 기반 실시간 UI
-- 이벤트명 마이그레이션(신규 dotted event + 기존 snake_case alias 병행)
+### 후속 고도화 예정
+- diversity 점수 결합 제출 우선순위
+- 운영 대시보드(비용/통과율/중복률) 자동화
+- Next.js 기반 정식 운영 UI
+- 이벤트명 마이그레이션 잔여 구간 정리(legacy alias 단계적 정리)
 
 ## 6) 상태 한 줄 정리
 
-- 현재: "메타 동기화 + 2-agent 계약 + 시뮬레이션/평가"까지 실행 가능
-- 다음: "비용 게이트(step-20) + validation-first loop(step-21) + 실시간 UI"를 결합
+- 현재: "메타 동기화 + 2-agent 계약 + step-20 budget + step-21 validation-first loop + 실시간 UI 프로토타입"까지 실행 가능
+- 다음: diversity/운영 자동화 지표를 결합한 장기 운영 경로 고도화

@@ -2,6 +2,10 @@
 
 ## Validation-first 생성/수정 루프 완성
 
+## 상태 (2026-02-12)
+- 구현 완료
+- 구현 보고서: `docs/artifacts/step-21/implementation_report.md`
+
 ## 0) 이 문서만 읽은 신규 에이전트용 요약
 - step-21은 "LLM 생성 결과를 바로 시뮬에 보내지 않도록" 파이프라인을 완성하는 단계다.
 - 생성 -> 정적검증 -> 수정 -> 재검증 -> 시뮬 순서를 강제해야 한다.
@@ -25,7 +29,7 @@
 - 즉, step-21의 시각화는 mock payload가 아니라 실제 응답을 기준으로 설계한다.
 
 실측 관측(2026-02-11 UTC, alpha_id=`j2l8Vzv9`, `O0w8RPJd`):
-- 실제 저장 이벤트는 현재 코드 기준 `simulation_completed`(underscore) 형태로 기록된다.
+- 실제 저장 이벤트는 현재 코드에서 `simulation.completed`(dotted) + alias `simulation_completed`(underscore) 둘 다 기록된다.
 - metrics payload 예시:
   - `sharpe=-0.64` (rerun: `-0.63`)
   - `fitness=-0.35`
@@ -67,7 +71,8 @@
 
 ### 3.2 repair loop orchestrator
 - 신규/수정:
-  - `src/brain_agent/agents/llm_orchestrator.py` 또는 `src/brain_agent/agents/pipeline.py`
+  - `src/brain_agent/agents/validation_loop.py`
+  - `src/brain_agent/cli.py` (`run-validation-loop`)
 - 설정:
   - `max_repair_attempts` (권장 3~5)
   - `stop_on_repeated_error`
@@ -80,6 +85,7 @@
 ### 3.4 프론트 동시 적용 범위 (F21: Neural Genesis Lab)
 - 컨셉: `Living Neural Network`
 - 정적인 트리가 아니라, 아이디어의 탄생/수정/사멸을 우주(Galaxy)처럼 표현한다.
+- 로컬 프로토타입: `docs/artifacts/step-21/neural_genesis_lab.html` (`/ui/neural-lab`)
 
 #### 3.4.1 Data Synapse Map (마인드맵 수색 시각화)
 - 구현: `react-force-graph-3d`
@@ -123,6 +129,8 @@
 4. `src/brain_agent/brain_api/simulations.py`
 - `poll_simulation()`에 progress callback 훅을 넣어 Arena 진행률 이벤트를 송출한다.
 - 단, 실 API에서 중간 진행률 필드가 안정적으로 내려오지 않는 경우가 있어 callback은 "있으면 활용, 없으면 단계 이벤트만" 전략으로 구현한다.
+5. `src/brain_agent/server/app.py`
+- `GET /api/runs/{run_id}/validation_kpi`로 재시도당 통과율(pass/fail per attempt)을 조회한다.
 
 ## 4) repair 규칙 (최소)
 1. Unknown operator/field
@@ -170,14 +178,14 @@ PYTHONPATH=src python3 -m brain_agent.cli run-validation-loop \
 8. mutation 이벤트로 parent-child 계보 그래프를 재구성할 수 있다.
 
 ## 6) 완료 정의 (Definition of Done)
-- [ ] validation-first gate가 기본 경로로 적용
-- [ ] repair loop 자동화 완료
-- [ ] 시뮬 큐 진입 조건이 코드로 강제됨
-- [ ] 재시도당 통과율 지표를 수집/조회 가능
-- [ ] 포맷 복구 우선 정책이 구현됨
-- [ ] 반복 오류에서 확장 분기로 탈출 가능함
-- [ ] Arena(백테스트) 실시간 이벤트 계약이 고정됨
-- [ ] Evolutionary Tree(변이 계보) 재구성 가능한 이벤트가 저장됨
+- [x] validation-first gate가 기본 경로로 적용
+- [x] repair loop 자동화 완료
+- [x] 시뮬 큐 진입 조건이 코드로 강제됨
+- [x] 재시도당 통과율 지표를 수집/조회 가능
+- [x] 포맷 복구 우선 정책이 구현됨
+- [x] 반복 오류에서 확장 분기로 탈출 가능함
+- [x] Arena(백테스트) 실시간 이벤트 계약이 고정됨
+- [x] Evolutionary Tree(변이 계보) 재구성 가능한 이벤트가 저장됨
 
 ## 7) step-21 이후 권장 작업
 - diversity 점수까지 결합한 제출 후보 우선순위 계산

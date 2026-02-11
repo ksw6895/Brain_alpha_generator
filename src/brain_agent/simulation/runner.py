@@ -1,4 +1,4 @@
-"""Simulation runner with dedupe and persistence."""
+"""Simulation runner with validation-aware queue events and persistence."""
 
 from __future__ import annotations
 
@@ -6,7 +6,12 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from ..brain_api.simulations import get_alpha_recordsets, get_recordset, run_multi_simulation, run_single_simulation
+from ..brain_api.simulations import (
+    get_alpha_recordsets,
+    get_recordset,
+    run_multi_simulation,
+    run_single_simulation,
+)
 from ..schemas import AlphaResult, CandidateAlpha, SummaryMetrics
 from ..storage.sqlite_store import MetadataStore
 from ..utils.expressions import normalize_expression
@@ -24,18 +29,41 @@ class SimulationRunner:
         *,
         fetch_recordsets: bool = True,
         recordset_dir: str = "data/recordsets",
+        enforce_validation_gate: bool = False,
     ) -> None:
         self.session = session
         self.store = store
         self.fetch_recordsets = fetch_recordsets
         self.recordset_dir = recordset_dir
+        self.enforce_validation_gate = bool(enforce_validation_gate)
 
-    def run_candidate(self, candidate: CandidateAlpha) -> AlphaResult | None:
-        """Run one candidate unless already simulated."""
+    def run_candidate(
+        self,
+        candidate: CandidateAlpha,
+        *,
+        run_id: str | None = None,
+        queue_payload: dict[str, Any] | None = None,
+    ) -> AlphaResult | None:
+        """Run one candidate unless blocked by validation gate or dedupe."""
+        active_run_id = str(run_id or f"simulation-{candidate.idea_id}")
         expression = _candidate_expression(candidate)
         settings = _simulation_payload(candidate)
         normalized_expression = normalize_expression(expression)
         fp = fingerprint_settings_expression(settings, normalized_expression)
+
+        if not self._validation_gate_allows(candidate):
+            self.store.append_event(
+                "simulation.blocked_validation",
+                {
+                    "idea_id": candidate.idea_id,
+                    "run_id": active_run_id,
+                    "stage": "simulation",
+                    "message": "Candidate blocked because validation_passed != true",
+                    "severity": "warn",
+                    "payload": self._queue_meta(candidate, queue_payload),
+                },
+            )
+            return None
 
         if self.store.has_fingerprint(fp):
             self.store.append_event(
@@ -43,16 +71,81 @@ class SimulationRunner:
                 {
                     "idea_id": candidate.idea_id,
                     "fingerprint": fp,
-                    "run_id": f"simulation-{candidate.idea_id}",
+                    "run_id": active_run_id,
                     "stage": "simulation",
                     "message": "Skipped duplicate candidate by fingerprint",
                     "severity": "info",
+                    "payload": self._queue_meta(candidate, queue_payload),
                 },
             )
             return None
 
-        alpha_payload = run_single_simulation(self.session, settings)
-        result = self._build_result(candidate, alpha_payload, fp, normalized_expression)
+        self.store.append_event(
+            "simulation.enqueued",
+            {
+                "idea_id": candidate.idea_id,
+                "run_id": active_run_id,
+                "stage": "simulation",
+                "message": "Candidate enqueued for simulation",
+                "severity": "info",
+                "payload": {
+                    **self._queue_meta(candidate, queue_payload),
+                    "fingerprint": fp,
+                },
+            },
+        )
+        self.store.append_event(
+            "simulation.started",
+            {
+                "idea_id": candidate.idea_id,
+                "run_id": active_run_id,
+                "stage": "simulation",
+                "message": "Simulation started",
+                "severity": "info",
+                "payload": {
+                    **self._queue_meta(candidate, queue_payload),
+                    "mode": "single",
+                    "fingerprint": fp,
+                },
+            },
+        )
+
+        last_progress_sig = ""
+
+        def progress_callback(progress_payload: dict[str, Any]) -> None:
+            nonlocal last_progress_sig
+            signature = canonical_json(progress_payload)
+            if signature == last_progress_sig:
+                return
+            last_progress_sig = signature
+            self.store.append_event(
+                "simulation.progress",
+                {
+                    "idea_id": candidate.idea_id,
+                    "run_id": active_run_id,
+                    "stage": "simulation",
+                    "message": "Simulation progress update",
+                    "severity": "info",
+                    "payload": {
+                        "progress": _extract_progress_value(progress_payload),
+                        "raw": progress_payload,
+                    },
+                },
+            )
+
+        alpha_payload = run_single_simulation(
+            self.session,
+            settings,
+            progress_callback=progress_callback,
+        )
+        result = self._build_result(
+            candidate,
+            alpha_payload,
+            fp,
+            normalized_expression,
+            run_id=active_run_id,
+            queue_payload=queue_payload,
+        )
 
         self.store.save_fingerprint(
             fingerprint=fp,
@@ -69,7 +162,7 @@ class SimulationRunner:
                 {
                     "idea_id": candidate.idea_id,
                     "alpha_id": result.alpha_id,
-                    "run_id": f"simulation-{candidate.idea_id}",
+                    "run_id": active_run_id,
                     "stage": "simulation",
                     "message": "Recordset fetch skipped due to non-fatal error",
                     "severity": "warn",
@@ -80,11 +173,18 @@ class SimulationRunner:
         self.store.save_alpha_result(result)
         return result
 
-    def run_candidates_multi(self, candidates: list[CandidateAlpha]) -> list[AlphaResult]:
+    def run_candidates_multi(
+        self,
+        candidates: list[CandidateAlpha],
+        *,
+        run_id: str | None = None,
+        queue_payload: dict[str, Any] | None = None,
+    ) -> list[AlphaResult]:
         """Run 2-10 candidates as multi-simulation when possible."""
         if not candidates:
             return []
 
+        active_run_id = str(run_id or f"simulation-{candidates[0].idea_id}")
         filtered: list[CandidateAlpha] = []
         payloads: list[dict[str, Any]] = []
         fingerprints: list[str] = []
@@ -95,16 +195,30 @@ class SimulationRunner:
             settings = _simulation_payload(candidate)
             normalized_expression = normalize_expression(expression)
             fp = fingerprint_settings_expression(settings, normalized_expression)
+            if not self._validation_gate_allows(candidate):
+                self.store.append_event(
+                    "simulation.blocked_validation",
+                    {
+                        "idea_id": candidate.idea_id,
+                        "run_id": active_run_id,
+                        "stage": "simulation",
+                        "message": "Candidate blocked because validation_passed != true",
+                        "severity": "warn",
+                        "payload": self._queue_meta(candidate, queue_payload),
+                    },
+                )
+                continue
             if self.store.has_fingerprint(fp):
                 self.store.append_event(
                     "simulation_skipped_duplicate",
                     {
                         "idea_id": candidate.idea_id,
                         "fingerprint": fp,
-                        "run_id": f"simulation-{candidate.idea_id}",
+                        "run_id": active_run_id,
                         "stage": "simulation",
                         "message": "Skipped duplicate candidate by fingerprint",
                         "severity": "info",
+                        "payload": self._queue_meta(candidate, queue_payload),
                     },
                 )
                 continue
@@ -112,27 +226,90 @@ class SimulationRunner:
             payloads.append(settings)
             fingerprints.append(fp)
             expressions.append(normalized_expression)
+            self.store.append_event(
+                "simulation.enqueued",
+                {
+                    "idea_id": candidate.idea_id,
+                    "run_id": active_run_id,
+                    "stage": "simulation",
+                    "message": "Candidate enqueued for simulation",
+                    "severity": "info",
+                    "payload": {
+                        **self._queue_meta(candidate, queue_payload),
+                        "fingerprint": fp,
+                    },
+                },
+            )
 
         if not filtered:
             return []
 
         if len(filtered) == 1:
-            single = self.run_candidate(filtered[0])
+            single = self.run_candidate(filtered[0], run_id=active_run_id, queue_payload=queue_payload)
             return [single] if single else []
 
-        alpha_payloads = run_multi_simulation(self.session, payloads)
+        self.store.append_event(
+            "simulation.started",
+            {
+                "idea_id": filtered[0].idea_id,
+                "run_id": active_run_id,
+                "stage": "simulation",
+                "message": "Simulation started",
+                "severity": "info",
+                "payload": {
+                    "mode": "multi",
+                    "candidate_count": len(filtered),
+                },
+            },
+        )
+
+        last_progress_sig = ""
+
+        def progress_callback(progress_payload: dict[str, Any]) -> None:
+            nonlocal last_progress_sig
+            signature = canonical_json(progress_payload)
+            if signature == last_progress_sig:
+                return
+            last_progress_sig = signature
+            self.store.append_event(
+                "simulation.progress",
+                {
+                    "idea_id": filtered[0].idea_id,
+                    "run_id": active_run_id,
+                    "stage": "simulation",
+                    "message": "Simulation progress update",
+                    "severity": "info",
+                    "payload": {
+                        "progress": _extract_progress_value(progress_payload),
+                        "raw": progress_payload,
+                    },
+                },
+            )
+
+        alpha_payloads = run_multi_simulation(
+            self.session,
+            payloads,
+            progress_callback=progress_callback,
+        )
         if len(alpha_payloads) != len(filtered):
             # Fallback to single mode when mapping is ambiguous.
             out: list[AlphaResult] = []
             for candidate in filtered:
-                one = self.run_candidate(candidate)
+                one = self.run_candidate(candidate, run_id=active_run_id, queue_payload=queue_payload)
                 if one:
                     out.append(one)
             return out
 
         out: list[AlphaResult] = []
         for candidate, alpha_payload, fp, normalized in zip(filtered, alpha_payloads, fingerprints, expressions):
-            result = self._build_result(candidate, alpha_payload, fp, normalized)
+            result = self._build_result(
+                candidate,
+                alpha_payload,
+                fp,
+                normalized,
+                run_id=active_run_id,
+                queue_payload=queue_payload,
+            )
             self.store.save_fingerprint(
                 fingerprint=fp,
                 idea_id=candidate.idea_id,
@@ -148,7 +325,7 @@ class SimulationRunner:
                     {
                         "idea_id": candidate.idea_id,
                         "alpha_id": result.alpha_id,
-                        "run_id": f"simulation-{candidate.idea_id}",
+                        "run_id": active_run_id,
                         "stage": "simulation",
                         "message": "Recordset fetch skipped due to non-fatal error",
                         "severity": "warn",
@@ -167,6 +344,9 @@ class SimulationRunner:
         alpha_payload: dict[str, Any],
         settings_fingerprint: str,
         normalized_expression: str,
+        *,
+        run_id: str,
+        queue_payload: dict[str, Any] | None = None,
     ) -> AlphaResult:
         alpha_id = str(alpha_payload.get("id") or alpha_payload.get("alpha") or "")
         if not alpha_id:
@@ -186,18 +366,22 @@ class SimulationRunner:
             raw_payload=alpha_payload,
         )
 
-        self.store.append_event(
-            "simulation_completed",
-            {
-                "idea_id": candidate.idea_id,
-                "alpha_id": alpha_id,
-                "metrics": metrics.model_dump(mode="python"),
-                "run_id": f"simulation-{candidate.idea_id}",
-                "stage": "simulation",
-                "message": "Simulation completed",
-                "severity": "info",
+        payload = {
+            "idea_id": candidate.idea_id,
+            "alpha_id": alpha_id,
+            "metrics": metrics.model_dump(mode="python"),
+            "run_id": run_id,
+            "stage": "simulation",
+            "message": "Simulation completed",
+            "severity": "info",
+            "payload": {
+                **self._queue_meta(candidate, queue_payload),
             },
-        )
+        }
+        # New dotted event name.
+        self.store.append_event("simulation.completed", payload)
+        # Backward-compatible alias.
+        self.store.append_event("simulation_completed", payload)
         return result
 
     def _fetch_and_save_recordsets(self, alpha_id: str) -> list[str]:
@@ -211,12 +395,21 @@ class SimulationRunner:
                 payload = get_recordset(self.session, alpha_id, name)
             except Exception:
                 continue
-            write_json(
-                _recordset_path(self.recordset_dir, alpha_id, name),
-                payload,
-            )
+            write_json(_recordset_path(self.recordset_dir, alpha_id, name), payload)
             saved.append(name)
         return saved
+
+    def _validation_gate_allows(self, candidate: CandidateAlpha) -> bool:
+        if not self.enforce_validation_gate:
+            return True
+        return bool(candidate.generation_notes.validation_passed)
+
+    def _queue_meta(self, candidate: CandidateAlpha, queue_payload: dict[str, Any] | None) -> dict[str, Any]:
+        payload = dict(queue_payload or {})
+        payload.setdefault("candidate_lane", candidate.generation_notes.candidate_lane)
+        payload.setdefault("validation_passed", candidate.generation_notes.validation_passed)
+        payload.setdefault("validation_attempts", candidate.generation_notes.validation_attempts)
+        return payload
 
 
 def _candidate_expression(candidate: CandidateAlpha) -> str:
@@ -253,6 +446,31 @@ def _metric(payload: dict[str, Any], *keys: str) -> float | None:
 def _recordset_path(base_dir: str, alpha_id: str, name: str) -> Path:
     safe_name = name.replace("/", "_")
     return Path(base_dir) / alpha_id / f"{safe_name}.json"
+
+
+def _extract_progress_value(payload: dict[str, Any]) -> float | None:
+    for key in ("progress", "percent", "pct", "completion"):
+        value = payload.get(key)
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except Exception:
+            continue
+        if number > 1.0:
+            return round(number / 100.0, 4)
+        return round(number, 4)
+
+    done = payload.get("childrenDone")
+    total = payload.get("childrenTotal")
+    if done is not None and total is not None:
+        try:
+            total_value = float(total)
+            if total_value > 0:
+                return round(float(done) / total_value, 4)
+        except Exception:
+            return None
+    return None
 
 
 def fingerprint_for_candidate(candidate: CandidateAlpha) -> str:

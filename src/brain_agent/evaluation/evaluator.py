@@ -5,9 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import pandas as pd
+try:  # pragma: no cover - optional heavy dependency
+    import pandas as pd
+except ModuleNotFoundError:  # pragma: no cover
+    pd = None  # type: ignore[assignment]
 
 from ..config import FilterPolicy
+from ..runtime.event_bus import EventBus
 from ..schemas import AlphaResult, ScoreCard, SummaryMetrics
 
 
@@ -15,16 +19,28 @@ from ..schemas import AlphaResult, ScoreCard, SummaryMetrics
 class ClusterSelection:
     selected_alpha_ids: list[str]
     dropped_alpha_ids: list[str]
-    corr_matrix: pd.DataFrame
+    corr_matrix: Any
 
 
 class Evaluator:
     """Apply policy filters and produce ranked scorecards."""
 
-    def __init__(self, policy: FilterPolicy | None = None) -> None:
+    def __init__(
+        self,
+        policy: FilterPolicy | None = None,
+        *,
+        event_bus: EventBus | None = None,
+    ) -> None:
         self.policy = policy or FilterPolicy()
+        self.event_bus = event_bus
 
-    def evaluate(self, results: list[AlphaResult]) -> list[ScoreCard]:
+    def evaluate(
+        self,
+        results: list[AlphaResult],
+        *,
+        run_id: str | None = None,
+        idea_id: str | None = None,
+    ) -> list[ScoreCard]:
         """Build scorecards sorted by composite score."""
         cards: list[ScoreCard] = []
         for result in results:
@@ -42,7 +58,13 @@ class Evaluator:
                 )
             )
 
-        return sorted(cards, key=lambda x: x.score, reverse=True)
+        ranked = sorted(cards, key=lambda x: x.score, reverse=True)
+        self._emit_completed_event(
+            run_id=run_id,
+            idea_id=idea_id or _infer_idea_id(results),
+            scorecards=ranked,
+        )
+        return ranked
 
     def _failure_reasons(self, metrics: SummaryMetrics) -> list[str]:
         reasons: list[str] = []
@@ -79,17 +101,18 @@ class Evaluator:
     def select_low_correlation(
         self,
         scorecards: list[ScoreCard],
-        daily_pnl: dict[str, list[float] | pd.Series],
+        daily_pnl: dict[str, list[float] | Any],
         *,
         max_abs_corr: float | None = None,
     ) -> ClusterSelection:
         """Keep top-ranked representative per high-correlation cluster."""
+        _require_pandas("select_low_correlation")
         threshold = max_abs_corr if max_abs_corr is not None else self.policy.max_abs_corr
 
         pnl_df = _build_pnl_matrix(daily_pnl)
         if pnl_df.empty or pnl_df.shape[1] <= 1:
             ids = [card.alpha_id for card in scorecards if card.alpha_id in pnl_df.columns or pnl_df.empty]
-            return ClusterSelection(ids, [], pd.DataFrame())
+            return ClusterSelection(ids, [], pd.DataFrame())  # type: ignore[union-attr]
 
         corr = pnl_df.corr().fillna(0.0)
         rank = {card.alpha_id: i for i, card in enumerate(scorecards)}
@@ -111,6 +134,7 @@ class Evaluator:
 
     def stability_from_yearly_stats(self, yearly_stats: pd.DataFrame) -> dict[str, float]:
         """Compute simple consistency stats for yearly metrics."""
+        _require_pandas("stability_from_yearly_stats")
         if yearly_stats.empty:
             return {"years": 0, "sharpe_std": 0.0, "pnl_std": 0.0, "drawdown_min": 0.0}
 
@@ -122,18 +146,69 @@ class Evaluator:
         }
         return out
 
+    def _emit_completed_event(
+        self,
+        *,
+        run_id: str | None,
+        idea_id: str,
+        scorecards: list[ScoreCard],
+    ) -> None:
+        if self.event_bus is None or not run_id:
+            return
 
-def _build_pnl_matrix(daily_pnl: dict[str, list[float] | pd.Series]) -> pd.DataFrame:
-    series_map: dict[str, pd.Series] = {}
+        passed = [card for card in scorecards if card.passed]
+        payload = {
+            "total": len(scorecards),
+            "passed": len(passed),
+            "failed": len(scorecards) - len(passed),
+            "top_alpha_ids": [card.alpha_id for card in scorecards[:5]],
+            "scorecards": [
+                {
+                    "alpha_id": card.alpha_id,
+                    "passed": card.passed,
+                    "score": card.score,
+                    "reasons": card.reasons,
+                    "metrics": card.metrics.model_dump(mode="python"),
+                }
+                for card in scorecards
+            ],
+        }
+        self.event_bus.publish(
+            event_type="evaluation.completed",
+            run_id=run_id,
+            idea_id=idea_id,
+            stage="evaluation",
+            message="Evaluation completed",
+            severity="info",
+            payload=payload,
+        )
+
+
+def _infer_idea_id(results: list[AlphaResult]) -> str:
+    for result in results:
+        idea_id = str(result.idea_id or "").strip()
+        if idea_id:
+            return idea_id
+    return "system"
+
+
+def _build_pnl_matrix(daily_pnl: dict[str, list[float] | Any]) -> pd.DataFrame:
+    _require_pandas("_build_pnl_matrix")
+    series_map: dict[str, Any] = {}
     for alpha_id, values in daily_pnl.items():
-        if isinstance(values, pd.Series):
+        if isinstance(values, pd.Series):  # type: ignore[union-attr]
             series_map[alpha_id] = values.reset_index(drop=True)
         else:
-            series_map[alpha_id] = pd.Series(values)
+            series_map[alpha_id] = pd.Series(values)  # type: ignore[union-attr]
 
     if not series_map:
-        return pd.DataFrame()
+        return pd.DataFrame()  # type: ignore[union-attr]
 
     max_len = max(len(s) for s in series_map.values())
     padded = {k: s.reindex(range(max_len)) for k, s in series_map.items()}
-    return pd.DataFrame(padded)
+    return pd.DataFrame(padded)  # type: ignore[union-attr]
+
+
+def _require_pandas(feature_name: str) -> None:
+    if pd is None:
+        raise RuntimeError(f"pandas is required for {feature_name}")

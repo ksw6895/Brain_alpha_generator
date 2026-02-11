@@ -36,6 +36,7 @@ def create_app(
     app.state.store = sqlite_store
     app.state.event_bus = bus
     reactor_hud_path = Path("docs/artifacts/step-20/reactor_hud.html")
+    neural_lab_path = Path("docs/artifacts/step-21/neural_genesis_lab.html")
 
     def _payload_events(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [row["payload"] for row in records if isinstance(row.get("payload"), dict)]
@@ -70,6 +71,60 @@ def create_app(
             "payload": payload,
         }
 
+    def _validation_kpi_payload(run_id: str, events: list[dict[str, Any]]) -> dict[str, Any]:
+        attempts: dict[int, dict[str, int]] = {}
+        summary = {
+            "runs": 0,
+            "final_passed": 0,
+            "final_failed": 0,
+            "retrieval_expanded": 0,
+        }
+        for event in events:
+            event_type = str(event.get("event_type") or "")
+            payload = event.get("payload")
+            detail = payload if isinstance(payload, dict) else {}
+            attempt_raw = detail.get("attempt")
+            try:
+                attempt = int(attempt_raw) if attempt_raw is not None else 0
+            except Exception:
+                attempt = 0
+
+            if event_type in {"validation.failed", "validation.retry_failed"}:
+                row = attempts.setdefault(attempt, {"passed": 0, "failed": 0})
+                row["failed"] += 1
+            elif event_type in {"validation.passed", "validation.retry_passed"}:
+                row = attempts.setdefault(attempt, {"passed": 0, "failed": 0})
+                row["passed"] += 1
+
+            if event_type == "validation.retrieval_expanded":
+                summary["retrieval_expanded"] += 1
+            elif event_type == "run.summary":
+                summary["runs"] += 1
+                if bool(detail.get("validation_passed")):
+                    summary["final_passed"] += 1
+                else:
+                    summary["final_failed"] += 1
+
+        attempt_rows = []
+        for attempt in sorted(attempts):
+            row = attempts[attempt]
+            total = row["passed"] + row["failed"]
+            pass_rate = (row["passed"] / total) if total > 0 else 0.0
+            attempt_rows.append(
+                {
+                    "attempt": attempt,
+                    "passed": row["passed"],
+                    "failed": row["failed"],
+                    "total": total,
+                    "pass_rate": round(pass_rate, 4),
+                }
+            )
+        return {
+            "run_id": run_id,
+            "attempts": attempt_rows,
+            "summary": summary,
+        }
+
     @app.get("/healthz")
     def healthz() -> dict[str, bool]:
         return {"ok": True}
@@ -79,6 +134,12 @@ def create_app(
         if not reactor_hud_path.exists():
             return {"ok": False, "error": f"hud_not_found:{reactor_hud_path}"}
         return FileResponse(reactor_hud_path)
+
+    @app.get("/ui/neural-lab")
+    def neural_lab_hud() -> FileResponse | dict[str, Any]:
+        if not neural_lab_path.exists():
+            return {"ok": False, "error": f"hud_not_found:{neural_lab_path}"}
+        return FileResponse(neural_lab_path)
 
     @app.get("/api/events/recent")
     def recent_events(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
@@ -110,6 +171,12 @@ def create_app(
             run_events=run_events,
             budget=llm_budget,
         )
+
+    @app.get("/api/runs/{run_id}/validation_kpi")
+    def run_validation_kpi(run_id: str, limit: int = Query(default=2000, ge=1, le=10000)) -> dict[str, Any]:
+        run_records = sqlite_store.list_event_records_for_run(run_id=run_id, limit=limit)
+        run_events = [row["payload"] for row in run_records if isinstance(row.get("payload"), dict)]
+        return _validation_kpi_payload(run_id, run_events)
 
     @app.get("/api/runs/{run_id}/reactor_status")
     def run_reactor_status(

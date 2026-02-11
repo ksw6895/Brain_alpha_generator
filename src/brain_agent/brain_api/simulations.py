@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Callable
 
 from .client import BrainAPISession
+
+ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 def _sleep_from_retry_after(headers: dict[str, str], floor_sec: float = 1.0) -> float:
@@ -29,15 +31,28 @@ def start_simulation(session: BrainAPISession, payload: dict[str, Any] | list[di
     return location
 
 
-def poll_simulation(session: BrainAPISession, location: str, *, max_rounds: int = 1000) -> dict[str, Any]:
+def poll_simulation(
+    session: BrainAPISession,
+    location: str,
+    *,
+    progress_callback: ProgressCallback | None = None,
+    max_rounds: int = 1000,
+) -> dict[str, Any]:
     """Poll simulation progress URL until completion."""
     for _ in range(max_rounds):
         r = session.get(location, ensure_login=False)
         if r.status_code // 100 != 2:
             raise RuntimeError(f"GET {location} failed: {r.status_code} {r.text}")
 
+        payload = r.json()
+        if progress_callback is not None:
+            try:
+                progress_callback(payload)
+            except Exception:
+                pass
+
         if _sleep_from_retry_after(r.headers) == 0:
-            return r.json()
+            return payload
     raise TimeoutError(f"Simulation polling exceeded max rounds: {location}")
 
 
@@ -90,20 +105,30 @@ def get_recordset(session: BrainAPISession, alpha_id: str, recordset_name: str) 
         return {"recordset_name": recordset_name, "raw_text": r.text}
 
 
-def run_single_simulation(session: BrainAPISession, payload: dict[str, Any]) -> dict[str, Any]:
+def run_single_simulation(
+    session: BrainAPISession,
+    payload: dict[str, Any],
+    *,
+    progress_callback: ProgressCallback | None = None,
+) -> dict[str, Any]:
     """Run one simulation to completion and return alpha payload."""
     location = start_simulation(session, payload)
-    progress = poll_simulation(session, location)
+    progress = poll_simulation(session, location, progress_callback=progress_callback)
     alpha_id = progress.get("alpha")
     if not alpha_id:
         raise RuntimeError(f"Simulation completed without alpha id: {progress}")
     return get_alpha(session, str(alpha_id))
 
 
-def run_multi_simulation(session: BrainAPISession, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def run_multi_simulation(
+    session: BrainAPISession,
+    payloads: list[dict[str, Any]],
+    *,
+    progress_callback: ProgressCallback | None = None,
+) -> list[dict[str, Any]]:
     """Run multi-simulation and return all child alpha payloads."""
     location = start_simulation(session, payloads)
-    progress = poll_simulation(session, location)
+    progress = poll_simulation(session, location, progress_callback=progress_callback)
 
     children = progress.get("children", [])
     if not children:

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from typing import Iterable
 
+from ..runtime.event_bus import EventBus
 from ..schemas import CandidateAlpha, FailureReason, ScoreCard
 
 
@@ -15,6 +18,9 @@ TRUNCATION_VALUES = [0.05, 0.08, 0.10, 0.13]
 
 class FeedbackMutator:
     """Generate parameter and expression mutations from evaluator feedback."""
+
+    def __init__(self, *, event_bus: EventBus | None = None) -> None:
+        self.event_bus = event_bus
 
     def classify_failure(self, card: ScoreCard) -> FailureReason:
         reasons = card.reasons
@@ -114,6 +120,8 @@ class FeedbackMutator:
         *,
         max_variants: int = 10,
         validator: object | None = None,
+        run_id: str | None = None,
+        parent_alpha_id: str | None = None,
     ) -> list[CandidateAlpha]:
         """Create new candidate variants and optionally keep only statically valid ones."""
         failure = self.classify_failure(card)
@@ -121,26 +129,86 @@ class FeedbackMutator:
         base = candidate.model_copy(deep=True)
         expression = base.simulation_settings.regular or ""
 
-        variants = self.parameter_search(base, max_variants=max_variants)
-        expr_mutations = self.mutate_expression(expression, max_variants=max_variants)
-
-        for expr in expr_mutations:
-            copy = candidate.model_copy(deep=True)
-            copy.simulation_settings.regular = expr
-            variants.append(copy)
-            if len(variants) >= max_variants:
+        tagged_variants: list[tuple[CandidateAlpha, str]] = []
+        for variant in self.parameter_search(base, max_variants=max_variants):
+            tagged_variants.append((variant, "parameter_search"))
+            if len(tagged_variants) >= max_variants:
                 break
 
+        if len(tagged_variants) < max_variants:
+            expr_mutations = self.mutate_expression(expression, max_variants=max_variants)
+            for expr in expr_mutations:
+                copy = candidate.model_copy(deep=True)
+                copy.simulation_settings.regular = expr
+                tagged_variants.append((copy, "expression_mutation"))
+                if len(tagged_variants) >= max_variants:
+                    break
+
+        selected: list[tuple[CandidateAlpha, str]]
         if validator is None:
-            return variants[:max_variants]
+            selected = tagged_variants[:max_variants]
+        else:
+            selected = []
+            for variant, source in tagged_variants:
+                report = validator.validate(variant.simulation_settings.regular or "")
+                if report.is_valid:
+                    selected.append((variant, source))
+                if len(selected) >= max_variants:
+                    break
+            # If every mutation failed validation, keep generated variants for inspection.
+            if not selected:
+                selected = tagged_variants[:max_variants]
 
-        filtered: list[CandidateAlpha] = []
-        for variant in variants:
-            report = validator.validate(variant.simulation_settings.regular or "")
-            if report.is_valid:
-                filtered.append(variant)
-            if len(filtered) >= max_variants:
-                break
+        out = [item for item, _ in selected]
+        self._emit_lineage_events(
+            parent=candidate,
+            variants=selected,
+            card=card,
+            failure=failure,
+            run_id=run_id,
+            parent_alpha_id=parent_alpha_id,
+        )
+        return out
 
-        # If every mutation failed validation, return the original generated set for inspection.
-        return filtered if filtered else variants[:max_variants]
+    def _emit_lineage_events(
+        self,
+        *,
+        parent: CandidateAlpha,
+        variants: list[tuple[CandidateAlpha, str]],
+        card: ScoreCard,
+        failure: FailureReason,
+        run_id: str | None,
+        parent_alpha_id: str | None,
+    ) -> None:
+        if self.event_bus is None or not run_id:
+            return
+
+        parent_key = _candidate_key(parent)
+        for idx, (child, source) in enumerate(variants):
+            child_key = _candidate_key(child)
+            self.event_bus.publish(
+                event_type="mutation.child_created",
+                run_id=run_id,
+                idea_id=parent.idea_id,
+                stage="feedback",
+                message="Mutation child candidate created",
+                severity="info",
+                payload={
+                    "parent_alpha_id": parent_alpha_id,
+                    "parent_candidate_key": parent_key,
+                    "child_candidate_key": child_key,
+                    "mutation_index": idx,
+                    "mutation_source": source,
+                    "failure_label": failure.label,
+                    "failure_actions": failure.actions,
+                    "scorecard_reasons": list(card.reasons),
+                    "candidate_lane": child.generation_notes.candidate_lane or parent.generation_notes.candidate_lane,
+                },
+            )
+
+
+def _candidate_key(candidate: CandidateAlpha) -> str:
+    settings = candidate.simulation_settings.model_dump(mode="python", exclude_none=True)
+    expression = candidate.simulation_settings.regular or candidate.simulation_settings.combo or ""
+    basis = json.dumps(settings, ensure_ascii=False, sort_keys=True) + "|" + expression.strip()
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]

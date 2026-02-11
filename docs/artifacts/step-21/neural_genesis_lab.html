@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neural Genesis Lab</title>
+  <style>
+    :root {
+      --bg-deep: #050505;
+      --bg-mid: #0b1120;
+      --line: #1d2a44;
+      --cyan: #00f3ff;
+      --green: #0aff00;
+      --red: #ff0055;
+      --gold: #f9d16d;
+      --text: #d7ebff;
+      --muted: #8ba3c3;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: radial-gradient(1200px 600px at 20% -10%, #17315a 0%, transparent 60%), radial-gradient(1200px 700px at 100% 0%, #1a183d 0%, transparent 60%), var(--bg-deep); color: var(--text); font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", Menlo, monospace; }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 28px 28px;
+      opacity: 0.25;
+    }
+
+    .shell {
+      position: relative;
+      min-height: 100%;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 12px;
+      padding: 16px;
+    }
+
+    .top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(18, 27, 49, 0.82), rgba(8, 12, 24, 0.82));
+      border-radius: 12px;
+      padding: 10px 12px;
+      backdrop-filter: blur(3px);
+    }
+
+    .title {
+      font-size: 16px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cyan);
+    }
+
+    .top form {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .top input {
+      background: #090e1f;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 9px;
+      min-width: 220px;
+    }
+
+    .top button {
+      background: linear-gradient(135deg, #103b52, #14485f);
+      color: var(--text);
+      border: 1px solid #276581;
+      border-radius: 8px;
+      padding: 7px 12px;
+      cursor: pointer;
+    }
+
+    .hud {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 8px;
+    }
+
+    .hud-card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(8, 14, 28, 0.84);
+    }
+
+    .hud-label { color: var(--muted); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .hud-value { margin-top: 4px; font-size: 18px; font-weight: 700; }
+    .hud-value.pass { color: var(--green); }
+    .hud-value.fail { color: var(--red); }
+    .hud-value.warn { color: var(--gold); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      min-height: 360px;
+    }
+
+    .panel {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(13, 18, 35, 0.9), rgba(7, 10, 18, 0.9));
+      overflow: hidden;
+      min-height: 240px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #22324d;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .panel canvas {
+      width: 100%;
+      height: calc(100% - 36px);
+      display: block;
+    }
+
+    .terminal {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(6, 10, 20, 0.88);
+      min-height: 180px;
+      overflow: auto;
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .log-line { white-space: pre-wrap; }
+    .log-line.info { color: #b5d4ff; }
+    .log-line.warn { color: var(--gold); }
+    .log-line.error { color: #ff6f9b; }
+
+    .status {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+      .hud { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="top">
+      <div>
+        <div class="title">Neural Genesis Lab</div>
+        <div class="status" id="connStatus">WS: idle</div>
+      </div>
+      <form id="runForm">
+        <label for="runId">run_id</label>
+        <input id="runId" name="run_id" placeholder="step21-run-id" />
+        <button type="submit">Stream</button>
+      </form>
+    </div>
+
+    <div class="hud">
+      <div class="hud-card"><div class="hud-label">Validation</div><div id="valState" class="hud-value warn">pending</div></div>
+      <div class="hud-card"><div class="hud-label">Repair Attempts</div><div id="attempts" class="hud-value">0</div></div>
+      <div class="hud-card"><div class="hud-label">Sim Progress</div><div id="simProgress" class="hud-value">0%</div></div>
+      <div class="hud-card"><div class="hud-label">Latest Sharpe</div><div id="sharpe" class="hud-value">N/A</div></div>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="panel-head"><span>Data Synapse Map</span><span id="synapseHint">idle</span></div>
+        <canvas id="synapseCanvas"></canvas>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><span>Evolutionary Galaxy</span><span id="galaxyHint">0 stars</span></div>
+        <canvas id="galaxyCanvas"></canvas>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><span>Arena Spectator</span><span id="arenaHint">awaiting simulation</span></div>
+        <canvas id="arenaCanvas"></canvas>
+      </section>
+    </div>
+
+    <div class="terminal" id="terminal"></div>
+  </div>
+
+  <script>
+    const state = {
+      ws: null,
+      logs: [],
+      runId: "",
+      validationPassed: null,
+      repairAttempts: 0,
+      simProgress: 0,
+      sharpe: null,
+      synapseNodes: [],
+      galaxyStars: [],
+      arenaSeries: [],
+      arenaTick: 0,
+      edges: [],
+      now: () => Date.now()
+    };
+
+    const synapseCtx = setupCanvas("synapseCanvas");
+    const galaxyCtx = setupCanvas("galaxyCanvas");
+    const arenaCtx = setupCanvas("arenaCanvas");
+
+    bootstrapNodes();
+    attachForm();
+    animate();
+
+    function setupCanvas(id) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext("2d");
+      resize(canvas);
+      window.addEventListener("resize", () => resize(canvas));
+      return { canvas, ctx };
+    }
+
+    function resize(canvas) {
+      const bounds = canvas.getBoundingClientRect();
+      canvas.width = Math.max(300, Math.floor(bounds.width * window.devicePixelRatio));
+      canvas.height = Math.max(180, Math.floor(bounds.height * window.devicePixelRatio));
+    }
+
+    function attachForm() {
+      const form = document.getElementById("runForm");
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const runId = String(document.getElementById("runId").value || "").trim();
+        connect(runId);
+      });
+    }
+
+    function connect(runId) {
+      if (state.ws) {
+        state.ws.close();
+        state.ws = null;
+      }
+      state.runId = runId;
+      const query = new URLSearchParams({
+        replay: "80",
+        include_reactor: "1",
+      });
+      if (runId) query.set("run_id", runId);
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = `${protocol}://${location.host}/ws/live?${query.toString()}`;
+      const ws = new WebSocket(wsUrl);
+      state.ws = ws;
+
+      ws.onopen = () => setConnStatus("WS: connected");
+      ws.onclose = () => setConnStatus("WS: closed");
+      ws.onerror = () => setConnStatus("WS: error");
+      ws.onmessage = (message) => {
+        try {
+          const event = JSON.parse(message.data);
+          ingestEvent(event);
+        } catch (_) {
+          appendLog({ severity: "warn", message: "invalid ws payload" });
+        }
+      };
+    }
+
+    function setConnStatus(text) {
+      document.getElementById("connStatus").textContent = text;
+    }
+
+    function ingestEvent(event) {
+      const eventType = String(event.event_type || "");
+      const payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+
+      appendLog(event);
+      markSynapse(eventType);
+
+      if (eventType.startsWith("validation.")) {
+        if (eventType === "validation.passed" || eventType === "validation.retry_passed") {
+          state.validationPassed = true;
+        }
+        if (eventType === "validation.failed" || eventType === "validation.retry_failed") {
+          state.validationPassed = false;
+        }
+        const attempt = Number(payload.attempt || 0);
+        if (Number.isFinite(attempt)) state.repairAttempts = Math.max(state.repairAttempts, attempt);
+      }
+
+      if (eventType === "simulation.progress") {
+        const progress = Number(payload.progress);
+        if (Number.isFinite(progress)) state.simProgress = Math.max(0, Math.min(1, progress));
+      }
+
+      if (eventType === "simulation.completed" || eventType === "simulation_completed") {
+        const metrics = payload.metrics && typeof payload.metrics === "object" ? payload.metrics : {};
+        const sharpe = Number(metrics.sharpe);
+        if (Number.isFinite(sharpe)) state.sharpe = sharpe;
+        pushArenaPoint(metrics);
+        state.simProgress = 1;
+        upsertStar(payload.alpha_id || "alpha", true, "#00f3ff");
+      }
+
+      if (eventType === "simulation.blocked_validation") {
+        state.simProgress = 0;
+      }
+
+      if (eventType === "mutation.child_created") {
+        const parent = String(payload.parent_candidate_key || "");
+        const child = String(payload.child_candidate_key || "");
+        if (child) upsertStar(child, false, "#0aff00");
+        if (parent && child) state.edges.push({ parent, child, bornAt: state.now() });
+      }
+
+      if (eventType === "agent.alpha_generated") {
+        upsertStar("seed-" + Math.random().toString(16).slice(2, 8), false, "#f9d16d");
+      }
+
+      renderHud();
+    }
+
+    function appendLog(event) {
+      const terminal = document.getElementById("terminal");
+      const line = document.createElement("div");
+      line.className = "log-line " + String(event.severity || "info");
+      const ts = String(event.created_at || "").split("T")[1] || "";
+      const type = String(event.event_type || "event");
+      const msg = String(event.message || "");
+      line.textContent = `[${ts}] ${type} :: ${msg}`;
+      terminal.appendChild(line);
+      while (terminal.children.length > 250) {
+        terminal.removeChild(terminal.firstChild);
+      }
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function renderHud() {
+      const valNode = document.getElementById("valState");
+      if (state.validationPassed === true) {
+        valNode.textContent = "passed";
+        valNode.className = "hud-value pass";
+      } else if (state.validationPassed === false) {
+        valNode.textContent = "failed";
+        valNode.className = "hud-value fail";
+      } else {
+        valNode.textContent = "pending";
+        valNode.className = "hud-value warn";
+      }
+      document.getElementById("attempts").textContent = String(state.repairAttempts);
+      document.getElementById("simProgress").textContent = `${Math.round(state.simProgress * 100)}%`;
+      document.getElementById("sharpe").textContent = Number.isFinite(state.sharpe) ? state.sharpe.toFixed(2) : "N/A";
+      document.getElementById("galaxyHint").textContent = `${state.galaxyStars.length} stars`;
+    }
+
+    function bootstrapNodes() {
+      const labels = ["Open", "Close", "High", "Low", "Volume", "VWAP", "Returns", "Momentum"];
+      state.synapseNodes = labels.map((label, idx) => ({
+        id: label.toLowerCase(),
+        label,
+        angle: (Math.PI * 2 * idx) / labels.length,
+        pulseUntil: 0
+      }));
+    }
+
+    function markSynapse(eventType) {
+      const now = state.now();
+      const map = {
+        "retrieval.pack_built": ["open", "close", "volume"],
+        "validation.retry_started": ["high", "low", "returns"],
+        "simulation.started": ["vwap", "momentum"],
+      };
+      const keys = map[eventType] || [];
+      for (const node of state.synapseNodes) {
+        if (keys.includes(node.id)) node.pulseUntil = now + 1400;
+      }
+      if (keys.length > 0) {
+        document.getElementById("synapseHint").textContent = "Data Searching...";
+      }
+    }
+
+    function upsertStar(id, stable, color) {
+      const now = state.now();
+      let star = state.galaxyStars.find((item) => item.id === id);
+      if (!star) {
+        star = {
+          id,
+          x: Math.random() * 0.8 + 0.1,
+          y: Math.random() * 0.8 + 0.1,
+          bornAt: now,
+          stable,
+          color,
+        };
+        state.galaxyStars.push(star);
+      }
+      star.stable = stable;
+      star.color = color || star.color;
+      star.bornAt = now;
+    }
+
+    function pushArenaPoint(metrics) {
+      const sharpe = Number(metrics.sharpe);
+      const fitness = Number(metrics.fitness);
+      const score = (Number.isFinite(sharpe) ? sharpe : 0) * 0.65 + (Number.isFinite(fitness) ? fitness : 0) * 0.35;
+      state.arenaTick += 1;
+      const last = state.arenaSeries.length > 0 ? state.arenaSeries[state.arenaSeries.length - 1].value : 0;
+      const next = last + score;
+      state.arenaSeries.push({ x: state.arenaTick, value: next });
+      while (state.arenaSeries.length > 120) state.arenaSeries.shift();
+      document.getElementById("arenaHint").textContent = `points: ${state.arenaSeries.length}`;
+    }
+
+    function animate() {
+      drawSynapse();
+      drawGalaxy();
+      drawArena();
+      requestAnimationFrame(animate);
+    }
+
+    function drawSynapse() {
+      const { canvas, ctx } = synapseCtx;
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      const cx = w * 0.5, cy = h * 0.5;
+      const radius = Math.min(w, h) * 0.32;
+      const now = state.now();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, 24 * window.devicePixelRatio, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,243,255,0.14)";
+      ctx.fill();
+      ctx.lineWidth = 1.5 * window.devicePixelRatio;
+      ctx.strokeStyle = "rgba(0,243,255,0.7)";
+      ctx.stroke();
+      ctx.restore();
+
+      for (const node of state.synapseNodes) {
+        const nx = cx + Math.cos(node.angle) * radius;
+        const ny = cy + Math.sin(node.angle) * radius;
+        const active = node.pulseUntil > now;
+        const pulse = active ? 0.8 + 0.2 * Math.sin(now / 80) : 0.24;
+
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(nx, ny);
+        ctx.lineWidth = 1.1 * window.devicePixelRatio;
+        ctx.strokeStyle = active ? `rgba(0,243,255,${pulse})` : "rgba(68,94,127,0.4)";
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(nx, ny, 8 * window.devicePixelRatio, 0, Math.PI * 2);
+        ctx.fillStyle = active ? `rgba(10,255,0,${pulse})` : "rgba(139,163,195,0.3)";
+        ctx.fill();
+      }
+    }
+
+    function drawGalaxy() {
+      const { canvas, ctx } = galaxyCtx;
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      const now = state.now();
+
+      for (const edge of state.edges.slice(-120)) {
+        const parent = state.galaxyStars.find((s) => s.id === edge.parent);
+        const child = state.galaxyStars.find((s) => s.id === edge.child);
+        if (!parent || !child) continue;
+        const x1 = parent.x * w, y1 = parent.y * h;
+        const x2 = child.x * w, y2 = child.y * h;
+        const age = Math.min(1, (now - edge.bornAt) / 2400);
+        ctx.strokeStyle = `rgba(249,209,109,${1 - age})`;
+        ctx.lineWidth = (2 - age) * window.devicePixelRatio;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      for (const star of state.galaxyStars.slice(-220)) {
+        const x = star.x * w;
+        const y = star.y * h;
+        const age = Math.min(1, (now - star.bornAt) / 1800);
+        const glow = star.stable ? 1 : 1 - age * 0.7;
+        ctx.beginPath();
+        ctx.arc(x, y, (5 + (1 - age) * 3) * window.devicePixelRatio, 0, Math.PI * 2);
+        ctx.fillStyle = hexToRgba(star.color || "#00f3ff", Math.max(0.2, glow));
+        ctx.fill();
+      }
+    }
+
+    function drawArena() {
+      const { canvas, ctx } = arenaCtx;
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const points = state.arenaSeries;
+      if (points.length < 2) return;
+
+      let min = Infinity, max = -Infinity;
+      for (const p of points) {
+        if (p.value < min) min = p.value;
+        if (p.value > max) max = p.value;
+      }
+      if (min === max) {
+        min -= 1;
+        max += 1;
+      }
+
+      const padX = 18 * window.devicePixelRatio;
+      const padY = 16 * window.devicePixelRatio;
+      const plotW = w - padX * 2;
+      const plotH = h - padY * 2;
+
+      ctx.beginPath();
+      for (let i = 0; i < points.length; i += 1) {
+        const x = padX + (i / (points.length - 1)) * plotW;
+        const t = (points[i].value - min) / (max - min);
+        const y = padY + (1 - t) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.lineWidth = 2 * window.devicePixelRatio;
+      ctx.strokeStyle = "rgba(249,209,109,0.95)";
+      ctx.stroke();
+    }
+
+    function hexToRgba(hex, alpha) {
+      const value = String(hex || "").replace("#", "");
+      const full = value.length === 3
+        ? value.split("").map((c) => c + c).join("")
+        : value.padEnd(6, "0");
+      const int = parseInt(full.slice(0, 6), 16);
+      const r = (int >> 16) & 255;
+      const g = (int >> 8) & 255;
+      const b = int & 255;
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+  </script>
+</body>
+</html>
