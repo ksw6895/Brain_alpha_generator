@@ -61,7 +61,7 @@ def create_app(
                 "input": "docs/artifacts/step-08/ideaspec.example.json",
                 "llm_provider": "mock",
                 "knowledge_pack_dir": "data/meta/index",
-                "skip_simulation": True,
+                "skip_simulation": False,
                 "max_repair_attempts": 3,
                 "run_id": "",
                 "work_dir": "/tmp/brain_ui_jobs",
@@ -110,7 +110,7 @@ def create_app(
                 "retrieval_pack": "/tmp/retrieval_pack_ui.json",
                 "knowledge_pack_dir": "data/meta/index",
                 "llm_provider": "mock",
-                "skip_simulation": True,
+                "skip_simulation": False,
                 "max_repair_attempts": 3,
                 "output": "/tmp/validated_candidates_ui.json",
                 "report_output": "/tmp/validation_report_ui.json",
@@ -338,7 +338,7 @@ def create_app(
         input_path = _require_str(params, "input", action="run-quick-validation-loop")
         knowledge_pack_dir = str(params.get("knowledge_pack_dir") or "data/meta/index")
         max_repair_attempts = int(params.get("max_repair_attempts") or 3)
-        skip_simulation = bool(params.get("skip_simulation", True))
+        skip_simulation = bool(params.get("skip_simulation", False))
 
         idea_path = str(work_dir / "idea_out.json")
         retrieval_path = str(work_dir / "retrieval_pack.json")
