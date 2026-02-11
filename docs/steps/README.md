@@ -15,7 +15,8 @@ WorldQuant BRAIN용 FastExpr 알파를 LLM 기반 멀티 에이전트로 생성�
 - 미완성 영역: LLM 오케스트레이션, 비용 제어, 생성-수정 자동 루프의 운영 완성도.
 - 2026-02-11 기준 step-17(Top-K retrieval pack)은 코드 구현 및 검증 완료.
 - 2026-02-11 기준 step-18(FastExpr knowledge pack)은 코드 구현 및 검증 완료.
-- 현재 다음 우선 구현 대상: step-19 (2-agent 계약 + 이벤트 스트림)
+- 2026-02-11 기준 step-19(2-agent 계약 + 이벤트 스트림 + OpenAI SDK 경로)는 코드 구현 및 검증 완료.
+- 현재 다음 우선 구현 대상: step-20 (토큰/비용 제어 + 예산 telemetry)
 
 ## 절대 원칙
 1. 전체 metadata를 LLM prompt에 직접 넣지 않는다.

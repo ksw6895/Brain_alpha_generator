@@ -1,5 +1,12 @@
 """Agent orchestration package."""
 
-from .pipeline import BrainPipeline
+from .llm_orchestrator import LLMOrchestrator, OrchestrationResult
 
-__all__ = ["BrainPipeline"]
+try:  # pragma: no cover - optional heavy dependency chain (pandas)
+    from .pipeline import BrainPipeline
+except ModuleNotFoundError as exc:  # pragma: no cover - keep lightweight imports usable
+    if exc.name != "pandas":
+        raise
+    BrainPipeline = None  # type: ignore[assignment]
+
+__all__ = ["BrainPipeline", "LLMOrchestrator", "OrchestrationResult"]

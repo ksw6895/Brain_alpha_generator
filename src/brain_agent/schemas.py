@@ -21,6 +21,9 @@ class IdeaSpec(BaseModel):
     target: SimulationTarget = Field(default_factory=SimulationTarget)
     candidate_datasets: list[str] = Field(default_factory=list)
     keywords_for_retrieval: list[str] = Field(default_factory=list)
+    candidate_subcategories: list[str] = Field(default_factory=list)
+    retrieval_context_id: str | None = None
+    exploration_intent: str | None = None
 
 
 class SimulationSettings(BaseModel):
@@ -58,6 +61,7 @@ class CandidateSimulation(BaseModel):
 class GenerationNotes(BaseModel):
     used_fields: list[str] = Field(default_factory=list)
     used_operators: list[str] = Field(default_factory=list)
+    candidate_lane: Literal["exploit", "explore"] | None = None
 
 
 class CandidateAlpha(BaseModel):
@@ -106,3 +110,14 @@ class FailureReason(BaseModel):
     label: str
     rationale: str
     actions: list[str] = Field(default_factory=list)
+
+
+class AgentEventEnvelope(BaseModel):
+    event_type: str
+    run_id: str
+    idea_id: str
+    stage: str
+    message: str
+    severity: Literal["info", "warn", "error"] = "info"
+    created_at: str
+    payload: dict[str, Any] = Field(default_factory=dict)

@@ -43,6 +43,10 @@ class SimulationRunner:
                 {
                     "idea_id": candidate.idea_id,
                     "fingerprint": fp,
+                    "run_id": f"simulation-{candidate.idea_id}",
+                    "stage": "simulation",
+                    "message": "Skipped duplicate candidate by fingerprint",
+                    "severity": "info",
                 },
             )
             return None
@@ -79,7 +83,14 @@ class SimulationRunner:
             if self.store.has_fingerprint(fp):
                 self.store.append_event(
                     "simulation_skipped_duplicate",
-                    {"idea_id": candidate.idea_id, "fingerprint": fp},
+                    {
+                        "idea_id": candidate.idea_id,
+                        "fingerprint": fp,
+                        "run_id": f"simulation-{candidate.idea_id}",
+                        "stage": "simulation",
+                        "message": "Skipped duplicate candidate by fingerprint",
+                        "severity": "info",
+                    },
                 )
                 continue
             filtered.append(candidate)
@@ -151,6 +162,10 @@ class SimulationRunner:
                 "idea_id": candidate.idea_id,
                 "alpha_id": alpha_id,
                 "metrics": metrics.model_dump(mode="python"),
+                "run_id": f"simulation-{candidate.idea_id}",
+                "stage": "simulation",
+                "message": "Simulation completed",
+                "severity": "info",
             },
         )
         return result

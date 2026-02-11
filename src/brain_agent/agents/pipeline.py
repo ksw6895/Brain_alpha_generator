@@ -42,7 +42,17 @@ class BrainPipeline:
     def run_metadata_sync(self, target: SimulationTarget) -> dict[str, int]:
         """MetaSync Agent responsibility."""
         summary = sync_all_metadata(self.session, self.store, target)
-        self.store.append_event("metadata_sync", summary)
+        self.store.append_event(
+            "metadata_sync",
+            {
+                **summary,
+                "run_id": "pipeline-metadata-sync",
+                "idea_id": "system",
+                "stage": "metadata_sync",
+                "message": "Metadata sync completed",
+                "severity": "info",
+            },
+        )
         return summary
 
     def run_cycle(self, candidates: list[CandidateAlpha]) -> PipelineCycleResult:
@@ -59,6 +69,11 @@ class BrainPipeline:
                 "simulated": len(results),
                 "passed": len(passed),
                 "mutations": len(mutations),
+                "run_id": "pipeline-cycle",
+                "idea_id": "system",
+                "stage": "pipeline_cycle",
+                "message": "Evaluation/feedback cycle completed",
+                "severity": "info",
             },
         )
 

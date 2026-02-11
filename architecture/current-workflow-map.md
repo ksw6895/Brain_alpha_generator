@@ -14,7 +14,8 @@
 - 이벤트 로그는 이미 존재하지만 범위가 제한적이다.
   - 항상 기록: `simulation_skipped_duplicate`, `simulation_completed`, `retrieval.pack_built`
   - `BrainPipeline` 경로에서만 기록: `metadata_sync`, `cycle_completed`
-- step-19~21에서 정의한 LLM 오케스트레이션/예산 게이트/validation loop/프론트 실시간 스트림은 "계약은 문서화됨, 코드 본체는 구현 예정" 상태다.
+- step-19의 2-agent 계약/parse-repair/event envelope/WS 브리지 골격은 구현됨.
+- step-20~21의 budget gate/validation loop/Arena-Evolutionary 확장은 구현 예정 상태다.
 
 ## 2) 현재 실행 가능 흐름 (CLI 중심, 단순 직렬 + 저장/로그 레인)
 
@@ -68,7 +69,7 @@ flowchart TD
 6. 후보 JSON 준비 후 `PYTHONPATH=src bash scripts/simulate_candidates.sh <input.json>`
 7. `PYTHONPATH=src bash scripts/evaluate_results.sh <result.json>`
 
-## 3) Step-19~21 확장 흐름 (구현 예정, 계약 고정됨)
+## 3) Step-20~21 확장 흐름 (step-19 구현 완료 기준, 일부 구현 예정)
 
 핵심: 프론트엔드를 맨 마지막으로 미루지 않고, 생성/검증/예산/시뮬 파이프라인과 병렬로 관측 계약을 함께 고정한다.
 
@@ -136,20 +137,24 @@ flowchart TD
 - 메타데이터 동기화/인덱스 빌드 (`src/brain_agent/metadata/sync.py`, `src/brain_agent/metadata/organize.py`)
 - step-17 retrieval pack 빌더 + Top-K 예산 config + retrieval 이벤트 (`src/brain_agent/retrieval/pack_builder.py`, `configs/retrieval_budget.json`, `src/brain_agent/cli.py`)
 - step-18 knowledge pack 빌더 + validator taxonomy 연계 (`src/brain_agent/generation/knowledge_pack.py`, `src/brain_agent/validation/static_validator.py`, `src/brain_agent/cli.py`)
+- step-19 2-agent 계약 구현 (`src/brain_agent/agents/llm_orchestrator.py`, `src/brain_agent/generation/prompting.py`, `src/brain_agent/cli.py`)
+- step-19 OpenAI SDK 실연동 (`src/brain_agent/generation/openai_provider.py`, `src/brain_agent/agents/llm_orchestrator.py`)
+- step-19 이벤트 표준화 + WS 브리지 골격 (`src/brain_agent/runtime/event_bus.py`, `src/brain_agent/server/app.py`, `src/brain_agent/storage/sqlite_store.py`)
 - 정적 검증 (`src/brain_agent/validation/static_validator.py`)
 - 시뮬/중복 스킵/결과 저장 (`src/brain_agent/simulation/runner.py`)
 - 평가 및 기본 변이 로직 (`src/brain_agent/evaluation/evaluator.py`, `src/brain_agent/feedback/mutator.py`)
 
 ### 부분구현
 - `BrainPipeline` 참조 오케스트레이터는 존재하나 기본 운영 경로는 아직 스크립트/CLI 중심 (`src/brain_agent/agents/pipeline.py`)
-- 이벤트 로그 저장은 있으나 표준화된 run/stage envelope와 WS 브로드캐스트는 미구현
+- FastAPI/uvicorn 의존성이 설치되지 않은 환경에서는 WS 서버 실행 검증이 제한됨
 
 ### 구현 예정
-- LLM 오케스트레이터, budget/validation-loop 신규 CLI
-- FastAPI + WebSocket 서버, Next.js 기반 실시간 UI
+- step-20 budget/토큰 fallback 정책 + KPI telemetry 고도화
+- step-21 validation-first repair loop + simulation queue 진입 강제
+- Next.js 기반 실시간 UI
 - 이벤트명 마이그레이션(신규 dotted event + 기존 snake_case alias 병행)
 
 ## 6) 상태 한 줄 정리
 
-- 현재: "메타 동기화 + 시뮬레이션 + 평가"는 안정적으로 실행 가능
-- 다음: "LLM 생성/수정 루프 + 비용 게이트 + 실시간 관측 UI"를 step-17~21 순서로 결합
+- 현재: "메타 동기화 + 2-agent 계약 + 시뮬레이션/평가"까지 실행 가능
+- 다음: "비용 게이트(step-20) + validation-first loop(step-21) + 실시간 UI"를 결합

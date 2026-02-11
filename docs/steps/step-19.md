@@ -102,6 +102,17 @@
 3. `src/brain_agent/simulation/runner.py`
 - 이미 `simulation_completed`, `simulation_skipped_duplicate`를 기록하므로 Brain Terminal에 우선 노출할 수 있다.
 
+### 3.6 OpenAI 런타임 기본값 (구현 반영)
+- provider 기본: `openai`
+- model 기본: `gpt-5.2`
+- `reasoning.effort`: `medium`
+- `text.verbosity`: `medium`
+- `reasoning.summary`: `auto`
+- 환경변수/CLI로 override 가능:
+  - `OPENAI_API_KEY`
+  - `BRAIN_LLM_PROVIDER`, `BRAIN_LLM_MODEL`
+  - `BRAIN_LLM_REASONING_EFFORT`, `BRAIN_LLM_VERBOSITY`, `BRAIN_LLM_REASONING_SUMMARY`
+
 ## 4) 실패 처리 계약
 1. Idea parse 실패
 - 1차: 포맷 복구 전용 재시도(JSON shape만 교정, 의미는 유지)
@@ -120,10 +131,20 @@
 예시(엔트리포인트 이름은 구현 시 확정):
 ```bash
 PYTHONPATH=src python3 -m brain_agent.cli run-idea-agent \
+  --llm-provider openai \
+  --llm-model gpt-5.2 \
+  --reasoning-effort medium \
+  --verbosity medium \
+  --reasoning-summary auto \
   --input docs/artifacts/step-08/ideaspec.example.json \
   --output /tmp/idea_out.json
 
 PYTHONPATH=src python3 -m brain_agent.cli run-alpha-maker \
+  --llm-provider openai \
+  --llm-model gpt-5.2 \
+  --reasoning-effort medium \
+  --verbosity medium \
+  --reasoning-summary auto \
   --idea /tmp/idea_out.json \
   --retrieval-pack /tmp/retrieval_pack.json \
   --knowledge-pack-dir data/meta/index \
@@ -139,13 +160,13 @@ PYTHONPATH=src python3 -m brain_agent.cli run-alpha-maker \
 6. 동일 이벤트 payload가 DB(event_log)와 WS 모두에서 일관됨
 
 ## 6) 완료 정의 (Definition of Done)
-- [ ] Idea Researcher / Alpha Maker 입력/출력 계약 고정
-- [ ] 스키마 변경 사항이 코드에 반영
-- [ ] 파서 실패/스키마 실패 에러코드 체계화
-- [ ] 포맷 복구 우선 정책(폐기 전 단계)이 반영됨
-- [ ] step-20이 수집할 토큰/비용 로그 포인트가 삽입됨
-- [ ] Brain Terminal용 실시간 이벤트 계약이 고정됨
-- [ ] FastAPI WebSocket 브리지 기본 골격이 생성됨
+- [x] Idea Researcher / Alpha Maker 입력/출력 계약 고정
+- [x] 스키마 변경 사항이 코드에 반영
+- [x] 파서 실패/스키마 실패 에러코드 체계화
+- [x] 포맷 복구 우선 정책(폐기 전 단계)이 반영됨
+- [x] step-20이 수집할 토큰/비용 로그 포인트가 삽입됨
+- [x] Brain Terminal용 실시간 이벤트 계약이 고정됨
+- [x] FastAPI WebSocket 브리지 기본 골격이 생성됨
 
 ## 7) 다음 step 인계
 - step-20에서 이 오케스트레이션 호출 단위별 토큰/비용 예산을 강제한다.

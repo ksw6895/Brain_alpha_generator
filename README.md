@@ -16,6 +16,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # .env 파일에 BRAIN_CREDENTIAL_EMAIL / BRAIN_CREDENTIAL_PASSWORD 입력
+# step-19 OpenAI 실행 시 OPENAI_API_KEY도 함께 입력
 ```
 
 3. (대안) 홈 디렉토리 크리덴셜 파일 생성
@@ -44,6 +45,40 @@ PYTHONPATH=src python3 -m brain_agent.cli build-retrieval-pack \
 ```bash
 PYTHONPATH=src python3 -m brain_agent.cli build-knowledge-pack \
   --output-dir data/meta/index
+```
+
+8. 2-agent 계약 실행 (step-19)
+```bash
+PYTHONPATH=src python3 -m brain_agent.cli run-idea-agent \
+  --llm-provider openai \
+  --llm-model gpt-5.2 \
+  --reasoning-effort medium \
+  --verbosity medium \
+  --reasoning-summary auto \
+  --input docs/artifacts/step-08/ideaspec.example.json \
+  --output /tmp/idea_out.json
+
+PYTHONPATH=src python3 -m brain_agent.cli build-retrieval-pack \
+  --idea /tmp/idea_out.json \
+  --output /tmp/retrieval_pack.json
+
+PYTHONPATH=src python3 -m brain_agent.cli run-alpha-maker \
+  --llm-provider openai \
+  --llm-model gpt-5.2 \
+  --reasoning-effort medium \
+  --verbosity medium \
+  --reasoning-summary auto \
+  --idea /tmp/idea_out.json \
+  --retrieval-pack /tmp/retrieval_pack.json \
+  --knowledge-pack-dir data/meta/index \
+  --output /tmp/candidate_alpha.json
+```
+
+OpenAI 키를 아직 넣지 않았거나 API 호출 없이 계약만 검증하려면 `--llm-provider mock`을 사용합니다.
+
+9. (선택) 실시간 이벤트 WebSocket 브리지 서버 실행
+```bash
+PYTHONPATH=src python3 -m brain_agent.cli serve-live-events --host 127.0.0.1 --port 8765
 ```
 
 > biometrics 인증이 필요한 계정이면 위 스크립트가 URL을 안내하고 터미널에서 대기합니다.

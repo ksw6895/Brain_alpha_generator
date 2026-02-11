@@ -4,6 +4,9 @@ pandas>=2.1
 tenacity>=8.2
 python-dotenv>=1.0
 rich>=13.7
+openai>=1.0
+fastapi>=0.110
+uvicorn>=0.29
 
 # Optional retrieval extras
 rank-bm25>=0.2.2

@@ -21,6 +21,8 @@
 | NC-010 | 토큰 절감으로 인한 탐색력 훼손 리스크 보강(이중 예산, 확장 분기, 포맷 복구, 품질 KPI) 반영 | DONE | Codex | docs/steps/README.md, docs/steps/step-17.md, docs/steps/step-18.md, docs/steps/step-19.md, docs/steps/step-20.md, docs/steps/step-21.md | 2026-02-10 |
 | NC-011 | step-17~21에 프론트엔드/관측성 병렬 트랙(F-Track) 통합(Neural Cosmos, Brain Terminal, Arena, Evolutionary Tree 계약 반영) | DONE | Codex | docs/steps/README.md, docs/steps/step-17.md, docs/steps/step-18.md, docs/steps/step-19.md, docs/steps/step-20.md, docs/steps/step-21.md | 2026-02-10 |
 | NC-012 | architecture/current-workflow-map.md 정합성 최신화(현재 코드 이벤트/저장 경로 + step-17~21/F-Track 병렬 흐름 반영) | DONE | Codex | architecture/current-workflow-map.md | 2026-02-10 |
+| NC-013 | step-19 구현 완료 후 문서 동기화(DoD 체크/로드맵 상태/구현 보고서 반영) | DONE | Codex | docs/steps/README.md, docs/steps/step-19.md, docs/artifacts/step-19/implementation_report.md, architecture/current-workflow-map.md | 2026-02-11 |
+| NC-014 | OpenAI SDK/Structured Output 반영에 따른 step-19 문서/가이드 업데이트 | DONE | Codex | README.md, docs/steps/step-19.md, docs/artifacts/step-19/implementation_report.md, architecture/current-workflow-map.md, .env.example | 2026-02-11 |
 
 ## 업데이트 로그
 - 2026-02-10: 초안 생성 (Step 0 완료 후 최초 등록)
@@ -31,3 +33,5 @@
 - 2026-02-10: NC-010 완료 (탐색력 훼손 리스크 완화 정책을 step-17~21에 반영)
 - 2026-02-10: NC-011 완료 (step-17~21에 프론트엔드 병렬 트랙 계약/이벤트/시각화 요구사항 반영)
 - 2026-02-10: NC-012 완료 (architecture 문서를 현재 코드/계획 정합성 기준으로 업데이트)
+- 2026-02-11: NC-013 완료 (step-19 구현 결과를 step 문서/로드맵/아키텍처 문서/구현 리포트에 동기화)
+- 2026-02-11: NC-014 완료 (OpenAI SDK/Structured Output 반영으로 step-19 문서/환경가이드 업데이트)

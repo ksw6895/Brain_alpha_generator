@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,9 @@ from .brain_api.client import BrainAPISession, BrainCredentials, load_credential
 from .brain_api.diversity import get_diversity
 from .config import AppConfig
 from .exceptions import ManualActionRequired
+from .agents.llm_orchestrator import LLMOrchestrator
 from .generation.knowledge_pack import build_knowledge_packs
+from .generation.openai_provider import OpenAILLMSettings, OpenAIProviderError
 from .metadata.sync import sync_all_metadata, sync_simulation_options
 from .retrieval.pack_builder import (
     RetrievalPack,
@@ -132,6 +135,14 @@ def main(argv: list[str] | None = None) -> int:
         event_payload = summarize_pack_for_event(pack)
         if args.output:
             event_payload["output"] = args.output
+        event_payload.update(
+            {
+                "run_id": f"retrieval-{pack.idea_id}",
+                "stage": "retrieval",
+                "message": "Top-K retrieval pack built",
+                "severity": "info",
+            }
+        )
         store.append_event("retrieval.pack_built", event_payload)
         print(
             json.dumps(
@@ -163,6 +174,143 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(payload, ensure_ascii=False))
         return 0 if result.success else 2
+
+    if args.command == "run-idea-agent":
+        payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Idea agent input must be a JSON object")
+
+        raw_output = Path(args.raw_output).read_text(encoding="utf-8") if args.raw_output else None
+        llm_settings = OpenAILLMSettings(
+            model=args.llm_model,
+            reasoning_effort=args.reasoning_effort,
+            verbosity=args.verbosity,
+            reasoning_summary=args.reasoning_summary,
+            max_output_tokens=args.max_output_tokens,
+        )
+        try:
+            orchestrator = LLMOrchestrator(
+                store=store,
+                meta_dir=args.meta_dir,
+                max_idea_regenerations=args.max_regenerations,
+                llm_provider=args.llm_provider,
+                llm_settings=llm_settings,
+            )
+            idea, run_id = orchestrator.run_idea_agent(
+                input_payload=payload,
+                run_id=args.run_id,
+                raw_output=raw_output,
+            )
+        except OpenAIProviderError as exc:
+            print(json.dumps({"error": "openai_provider_error", "message": str(exc)}, ensure_ascii=False), file=sys.stderr)
+            return 2
+        if args.output:
+            Path(args.output).write_text(idea.model_dump_json(indent=2), encoding="utf-8")
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "run_id": run_id,
+                    "idea_id": idea.idea_id,
+                    "output": args.output,
+                    "llm_provider": args.llm_provider,
+                    "llm_model": args.llm_model,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
+    if args.command == "run-alpha-maker":
+        idea = _load_idea_spec(json.loads(Path(args.idea).read_text(encoding="utf-8")))
+        retrieval_pack = RetrievalPack.model_validate(
+            json.loads(Path(args.retrieval_pack).read_text(encoding="utf-8"))
+        )
+        raw_output = Path(args.raw_output).read_text(encoding="utf-8") if args.raw_output else None
+
+        llm_settings = OpenAILLMSettings(
+            model=args.llm_model,
+            reasoning_effort=args.reasoning_effort,
+            verbosity=args.verbosity,
+            reasoning_summary=args.reasoning_summary,
+            max_output_tokens=args.max_output_tokens,
+        )
+        try:
+            orchestrator = LLMOrchestrator(
+                store=store,
+                meta_dir=args.meta_dir,
+                max_alpha_regenerations=args.max_regenerations,
+                llm_provider=args.llm_provider,
+                llm_settings=llm_settings,
+            )
+            candidate, run_id = orchestrator.run_alpha_maker(
+                idea=idea,
+                retrieval_pack=retrieval_pack,
+                knowledge_pack_dir=args.knowledge_pack_dir,
+                run_id=args.run_id,
+                raw_output=raw_output,
+            )
+        except OpenAIProviderError as exc:
+            print(json.dumps({"error": "openai_provider_error", "message": str(exc)}, ensure_ascii=False), file=sys.stderr)
+            return 2
+        if args.output:
+            Path(args.output).write_text(candidate.model_dump_json(indent=2), encoding="utf-8")
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "run_id": run_id,
+                    "idea_id": idea.idea_id,
+                    "output": args.output,
+                    "used_fields": candidate.generation_notes.used_fields,
+                    "used_operators": candidate.generation_notes.used_operators,
+                    "llm_provider": args.llm_provider,
+                    "llm_model": args.llm_model,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
+    if args.command == "serve-live-events":
+        try:
+            import uvicorn
+        except Exception as exc:
+            print(
+                json.dumps(
+                    {
+                        "error": "missing_dependency",
+                        "message": f"uvicorn import failed: {exc}",
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+
+        try:
+            from .runtime.event_bus import EventBus
+            from .server.app import create_app
+        except ModuleNotFoundError as exc:
+            print(
+                json.dumps(
+                    {
+                        "error": "missing_dependency",
+                        "message": f"server import failed: {exc}",
+                    },
+                    ensure_ascii=False,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+
+        app = create_app(
+            store=store,
+            event_bus=EventBus(store=store),
+            poll_interval_sec=args.poll_interval_sec,
+        )
+        uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
+        return 0
 
     parser.print_help()
     return 1
@@ -241,6 +389,50 @@ def build_parser() -> argparse.ArgumentParser:
     p_kpack.add_argument("--output-dir", default="data/meta/index")
     p_kpack.add_argument("--meta-dir", default=str(configure_default_meta_dir()))
 
+    p_idea = sub.add_parser("run-idea-agent", help="Run Idea Researcher contract parser/repair flow (step-19)")
+    p_idea.add_argument("--input", required=True, help="Path to idea input JSON")
+    p_idea.add_argument("--raw-output", default=None, help="Optional raw LLM output text file for parse/repair tests")
+    p_idea.add_argument("--run-id", default=None, help="Optional run id override")
+    p_idea.add_argument("--max-regenerations", type=int, default=2)
+    p_idea.add_argument("--meta-dir", default=str(configure_default_meta_dir()))
+    p_idea.add_argument(
+        "--llm-provider",
+        choices=["openai", "mock", "auto"],
+        default=str(os.getenv("BRAIN_LLM_PROVIDER") or "openai"),
+    )
+    p_idea.add_argument("--llm-model", default=str(os.getenv("BRAIN_LLM_MODEL") or "gpt-5.2"))
+    p_idea.add_argument("--reasoning-effort", choices=["minimal", "low", "medium", "high"], default=str(os.getenv("BRAIN_LLM_REASONING_EFFORT") or "medium"))
+    p_idea.add_argument("--verbosity", choices=["low", "medium", "high"], default=str(os.getenv("BRAIN_LLM_VERBOSITY") or "medium"))
+    p_idea.add_argument("--reasoning-summary", choices=["auto", "concise", "detailed"], default=str(os.getenv("BRAIN_LLM_REASONING_SUMMARY") or "auto"))
+    p_idea.add_argument("--max-output-tokens", type=int, default=_env_int("BRAIN_LLM_MAX_OUTPUT_TOKENS", 2200))
+    p_idea.add_argument("--output", default="/tmp/idea_out.json")
+
+    p_alpha = sub.add_parser("run-alpha-maker", help="Run Alpha Maker contract parser/repair flow (step-19)")
+    p_alpha.add_argument("--idea", required=True, help="Path to IdeaSpec JSON")
+    p_alpha.add_argument("--retrieval-pack", required=True, help="Path to retrieval pack JSON")
+    p_alpha.add_argument("--knowledge-pack-dir", default="data/meta/index")
+    p_alpha.add_argument("--raw-output", default=None, help="Optional raw LLM output text file for parse/repair tests")
+    p_alpha.add_argument("--run-id", default=None, help="Optional run id override")
+    p_alpha.add_argument("--max-regenerations", type=int, default=2)
+    p_alpha.add_argument("--meta-dir", default=str(configure_default_meta_dir()))
+    p_alpha.add_argument(
+        "--llm-provider",
+        choices=["openai", "mock", "auto"],
+        default=str(os.getenv("BRAIN_LLM_PROVIDER") or "openai"),
+    )
+    p_alpha.add_argument("--llm-model", default=str(os.getenv("BRAIN_LLM_MODEL") or "gpt-5.2"))
+    p_alpha.add_argument("--reasoning-effort", choices=["minimal", "low", "medium", "high"], default=str(os.getenv("BRAIN_LLM_REASONING_EFFORT") or "medium"))
+    p_alpha.add_argument("--verbosity", choices=["low", "medium", "high"], default=str(os.getenv("BRAIN_LLM_VERBOSITY") or "medium"))
+    p_alpha.add_argument("--reasoning-summary", choices=["auto", "concise", "detailed"], default=str(os.getenv("BRAIN_LLM_REASONING_SUMMARY") or "auto"))
+    p_alpha.add_argument("--max-output-tokens", type=int, default=_env_int("BRAIN_LLM_MAX_OUTPUT_TOKENS", 2200))
+    p_alpha.add_argument("--output", default="/tmp/candidate_alpha.json")
+
+    p_live = sub.add_parser("serve-live-events", help="Serve FastAPI live event bridge (step-19)")
+    p_live.add_argument("--host", default="127.0.0.1")
+    p_live.add_argument("--port", type=int, default=8765)
+    p_live.add_argument("--poll-interval-sec", type=float, default=0.5)
+    p_live.add_argument("--log-level", default="info")
+
     return parser
 
 
@@ -293,6 +485,16 @@ def _save_retrieval_pack(path: str | None, pack: RetrievalPack) -> None:
 
 def configure_default_meta_dir() -> Path:
     return AppConfig().paths.meta_dir
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except Exception:
+        return default
 
 
 if __name__ == "__main__":

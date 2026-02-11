@@ -340,11 +340,51 @@ class MetadataStore:
             )
 
     def append_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        normalized = _normalize_event_payload(event_type, payload)
+        created_at = str(normalized.get("created_at") or utc_now_iso())
+        normalized["created_at"] = created_at
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO event_log(event_type, payload_json, created_at) VALUES (?, ?, ?)",
-                (event_type, json.dumps(payload, ensure_ascii=False), utc_now_iso()),
+                (event_type, json.dumps(normalized, ensure_ascii=False), created_at),
             )
+
+    def list_event_records(self, *, limit: int = 200) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 5000))
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, event_type, payload_json, created_at
+                FROM event_log
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+
+        out: list[dict[str, Any]] = []
+        for row in reversed(rows):
+            out.append(_decode_event_record(dict(row)))
+        return out
+
+    def list_event_records_since(self, *, last_id: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 5000))
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, event_type, payload_json, created_at
+                FROM event_log
+                WHERE id > ?
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (int(last_id), safe_limit),
+            ).fetchall()
+
+        return [_decode_event_record(dict(row)) for row in rows]
+
+    def list_events(self, *, limit: int = 200) -> list[dict[str, Any]]:
+        return [row["payload"] for row in self.list_event_records(limit=limit)]
 
     def list_operators(self) -> list[dict[str, Any]]:
         with self._connect() as conn:
@@ -395,3 +435,46 @@ def _normalize_scope(scope: Any) -> str | None:
     if isinstance(scope, list):
         return ",".join(str(x) for x in scope)
     return str(scope)
+
+
+def _normalize_event_payload(event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+    row = dict(payload or {})
+    row.setdefault("event_type", event_type)
+    row.setdefault("run_id", str(row.get("run_id") or "legacy-run"))
+    row.setdefault("idea_id", str(row.get("idea_id") or "unknown"))
+    row.setdefault("stage", str(row.get("stage") or "legacy"))
+    row.setdefault("message", str(row.get("message") or event_type))
+    level = str(row.get("severity") or "info").lower()
+    if level not in {"info", "warn", "error"}:
+        level = "info"
+    row["severity"] = level
+    row.setdefault("created_at", utc_now_iso())
+    if not isinstance(row.get("payload"), dict):
+        row["payload"] = {}
+    return row
+
+
+def _decode_event_record(row: dict[str, Any]) -> dict[str, Any]:
+    payload = _parse_payload_json(row.get("payload_json"))
+    payload.setdefault("event_type", str(row.get("event_type") or "event.unknown"))
+    payload.setdefault("created_at", str(row.get("created_at") or utc_now_iso()))
+    return {
+        "id": int(row.get("id") or 0),
+        "event_type": str(row.get("event_type") or "event.unknown"),
+        "created_at": str(row.get("created_at") or utc_now_iso()),
+        "payload": payload,
+    }
+
+
+def _parse_payload_json(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value:
+        return {}
+    try:
+        payload = json.loads(value)
+    except Exception:
+        return {}
+    if isinstance(payload, dict):
+        return payload
+    return {"value": payload}
