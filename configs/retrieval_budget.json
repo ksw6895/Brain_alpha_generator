@@ -1,0 +1,21 @@
+{
+  "exploit_ratio": 0.7,
+  "explore_ratio": 0.3,
+  "exploit": {
+    "subcategories": 4,
+    "datasets": 14,
+    "fields": 60,
+    "operators": 48
+  },
+  "explore": {
+    "subcategories": 1,
+    "datasets": 3,
+    "fields": 12,
+    "operators": 12
+  },
+  "expansion_policy": {
+    "enabled": true,
+    "trigger_on_repeated_validation_error": 2,
+    "topk_expand_factor": 1.5
+  }
+}

@@ -13,6 +13,7 @@ WorldQuant BRAIN용 FastExpr 알파를 LLM 기반 멀티 에이전트로 생성�
 - operators/datasets/data-fields는 로컬 DB와 JSON 인덱스에 저장됨.
 - 정적 검증기, 시뮬레이터, 평가기는 구현됨.
 - 미완성 영역: LLM 오케스트레이션, 비용 제어, 생성-수정 자동 루프의 운영 완성도.
+- 2026-02-11 기준 step-17(Top-K retrieval pack)은 코드 구현 및 검증 완료.
 
 ## 절대 원칙
 1. 전체 metadata를 LLM prompt에 직접 넣지 않는다.

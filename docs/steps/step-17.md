@@ -182,16 +182,19 @@ PYTHONPATH=src python3 -m brain_agent.cli build-retrieval-pack \
 6. `visual_graph.nodes/edges`가 생성되고 lane/state/type 규칙을 만족한다.
 7. retrieval 단계 이벤트(`retrieval.pack_built`)가 event_log에 남는다.
 
+실행 증빙:
+- `docs/artifacts/step-17/implementation_report.md` (2026-02-11)
+
 ## 7) 완료 정의 (Definition of Done)
-- [ ] retrieval pack 스키마가 코드/문서로 고정됨
-- [ ] CLI 또는 함수 진입점이 생김
-- [ ] 기본 Top-K budget이 config 가능하게 노출됨
-- [ ] exploit/explore 이중 예산이 스키마에 반영됨
-- [ ] 반복 오류 시 retrieval 확장 트리거가 정의됨
-- [ ] 예시 아이디어 입력으로 재현 가능한 출력 생성 성공
-- [ ] step-18이 바로 사용할 수 있는 인터페이스 제공
-- [ ] 프론트용 `visual_graph` 계약이 고정됨 (Neural Cosmos v0)
-- [ ] retrieval 이벤트 스키마가 고정됨 (`retrieval.*`)
+- [x] retrieval pack 스키마가 코드/문서로 고정됨
+- [x] CLI 또는 함수 진입점이 생김
+- [x] 기본 Top-K budget이 config 가능하게 노출됨
+- [x] exploit/explore 이중 예산이 스키마에 반영됨
+- [x] 반복 오류 시 retrieval 확장 트리거가 정의됨
+- [x] 예시 아이디어 입력으로 재현 가능한 출력 생성 성공
+- [x] step-18이 바로 사용할 수 있는 인터페이스 제공
+- [x] 프론트용 `visual_graph` 계약이 고정됨 (Neural Cosmos v0)
+- [x] retrieval 이벤트 스키마가 고정됨 (`retrieval.*`)
 
 ## 8) 다음 step 인계
 - step-18은 이 step의 retrieval pack을 입력으로 받아 FastExpr 지식팩과 결합한다.

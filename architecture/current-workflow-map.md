@@ -1,18 +1,18 @@
 # Current Workflow Map
 
-이 문서는 2026-02-10 기준 `main` 코드와 `docs/steps/step-17~21.md` 계획을 함께 반영한다.  
+이 문서는 2026-02-11 기준 `main` 코드와 `docs/steps/step-17~21.md` 계획을 함께 반영한다.  
 목표는 "현재 실행 경로"와 "다음 구현 경로"를 혼동하지 않게 정리하는 것이다.
 
 ## 1) 정합성 점검 요약 (코드 vs 단계 계획)
 
 - 현재 실제 실행의 중심은 CLI/스크립트 경로다.
-  - `sync-options` / `sync-metadata` / `simulate-candidates` / `evaluate-results`
+  - `sync-options` / `sync-metadata` / `build-retrieval-pack` / `simulate-candidates` / `evaluate-results`
 - 메타데이터 동기화 + 시뮬/평가 엔진은 동작 중이다.
   - 메타 인덱스/진행 파일: `data/meta/*`
   - 결과/레코드셋: `data/simulation_results/*`, `data/recordsets/*`
   - DB: `data/brain_agent.db`
 - 이벤트 로그는 이미 존재하지만 범위가 제한적이다.
-  - 항상 기록: `simulation_skipped_duplicate`, `simulation_completed`
+  - 항상 기록: `simulation_skipped_duplicate`, `simulation_completed`, `retrieval.pack_built`
   - `BrainPipeline` 경로에서만 기록: `metadata_sync`, `cycle_completed`
 - step-17~21에서 정의한 LLM 오케스트레이션/예산 게이트/validation loop/프론트 실시간 스트림은 "계약은 문서화됨, 코드 본체는 구현 예정" 상태다.
 
@@ -28,7 +28,8 @@ flowchart TD
   subgraph EXEC["Execution Lane (현재 실행 가능)"]
     U["사용자 실행 시작"] --> OPT["sync-options"]
     OPT --> META["sync-metadata"]
-    META --> CAND["후보 JSON 준비 (수동/템플릿)"]
+    META --> RPACK["build-retrieval-pack"]
+    RPACK --> CAND["후보 JSON 준비 (수동/템플릿)"]
     CAND --> VAL["validate-expression (선택)"]
     CAND --> SIM["simulate-candidates"]
     VAL --> SIM
@@ -49,6 +50,7 @@ flowchart TD
   end
 
   subgraph OBSNOW["Telemetry Lane (현재 최소)"]
+    RPACK --> E0["retrieval.pack_built"]
     SKIP --> E1["simulation_skipped_duplicate"]
     RUNSIM --> E2["simulation_completed"]
     PIPE["(선택) BrainPipeline.run_*"] --> E3["metadata_sync / cycle_completed"]
@@ -60,8 +62,9 @@ flowchart TD
 1. `bash scripts/setup_credentials.sh`
 2. `PYTHONPATH=src bash scripts/sync_options.sh`
 3. `PYTHONPATH=src bash scripts/sync_metadata.sh --region USA --delay 1 --universe TOP3000`
-4. 후보 JSON 준비 후 `PYTHONPATH=src bash scripts/simulate_candidates.sh <input.json>`
-5. `PYTHONPATH=src bash scripts/evaluate_results.sh <result.json>`
+4. `PYTHONPATH=src python3 -m brain_agent.cli build-retrieval-pack --idea <ideaspec.json> --output <retrieval_pack.json>`
+5. 후보 JSON 준비 후 `PYTHONPATH=src bash scripts/simulate_candidates.sh <input.json>`
+6. `PYTHONPATH=src bash scripts/evaluate_results.sh <result.json>`
 
 ## 3) Step-17~21 확장 흐름 (구현 예정, 계약 고정됨)
 
@@ -129,6 +132,7 @@ flowchart TD
 
 ### 구현됨
 - 메타데이터 동기화/인덱스 빌드 (`src/brain_agent/metadata/sync.py`, `src/brain_agent/metadata/organize.py`)
+- step-17 retrieval pack 빌더 + Top-K 예산 config + retrieval 이벤트 (`src/brain_agent/retrieval/pack_builder.py`, `configs/retrieval_budget.json`, `src/brain_agent/cli.py`)
 - 정적 검증 (`src/brain_agent/validation/static_validator.py`)
 - 시뮬/중복 스킵/결과 저장 (`src/brain_agent/simulation/runner.py`)
 - 평가 및 기본 변이 로직 (`src/brain_agent/evaluation/evaluator.py`, `src/brain_agent/feedback/mutator.py`)

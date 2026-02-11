@@ -19,7 +19,13 @@ from .brain_api.diversity import get_diversity
 from .config import AppConfig
 from .exceptions import ManualActionRequired
 from .metadata.sync import sync_all_metadata, sync_simulation_options
-from .schemas import AlphaResult, CandidateAlpha, SimulationTarget
+from .retrieval.pack_builder import (
+    RetrievalPack,
+    build_retrieval_pack,
+    load_retrieval_budget,
+    summarize_pack_for_event,
+)
+from .schemas import AlphaResult, CandidateAlpha, IdeaSpec, SimulationTarget
 from .simulation.runner import SimulationRunner
 from .storage.sqlite_store import MetadataStore
 from .validation.static_validator import StaticValidator
@@ -110,6 +116,36 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"saved": bool(args.output), "output": args.output}, ensure_ascii=False))
         return 0
 
+    if args.command == "build-retrieval-pack":
+        payload = json.loads(Path(args.idea).read_text(encoding="utf-8"))
+        idea = _load_idea_spec(payload)
+        budget = load_retrieval_budget(args.budget_config)
+        pack = build_retrieval_pack(
+            idea=idea,
+            store=store,
+            budget=budget,
+            meta_dir=args.meta_dir,
+            query_override=args.query,
+        )
+        _save_retrieval_pack(args.output, pack)
+        event_payload = summarize_pack_for_event(pack)
+        if args.output:
+            event_payload["output"] = args.output
+        store.append_event("retrieval.pack_built", event_payload)
+        print(
+            json.dumps(
+                {
+                    "built": True,
+                    "idea_id": pack.idea_id,
+                    "output": args.output,
+                    "candidate_counts": pack.telemetry.candidate_counts,
+                    "token_estimate": pack.token_estimate.model_dump(mode="python"),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+
     parser.print_help()
     return 1
 
@@ -168,6 +204,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_div.add_argument("--grouping", default="region,delay,dataCategory")
     p_div.add_argument("--output", default="data/diversity/latest.json")
 
+    p_rpack = sub.add_parser("build-retrieval-pack", help="Build Top-K retrieval pack from IdeaSpec JSON")
+    p_rpack.add_argument("--idea", required=True, help="Path to IdeaSpec JSON")
+    p_rpack.add_argument("--query", default=None, help="Optional query override for retrieval")
+    p_rpack.add_argument(
+        "--meta-dir",
+        default=str(configure_default_meta_dir()),
+        help="Metadata root directory containing index artifacts.",
+    )
+    p_rpack.add_argument(
+        "--budget-config",
+        default="configs/retrieval_budget.json",
+        help="Path to retrieval budget JSON (uses defaults if missing).",
+    )
+    p_rpack.add_argument("--output", default="data/retrieval/latest_pack.json")
+
     return parser
 
 
@@ -196,6 +247,30 @@ def _session_from_args(args: argparse.Namespace) -> BrainAPISession:
     creds = load_credentials(args.credentials) if args.credentials else load_credentials()
     interactive = bool(getattr(args, "interactive_login", False))
     return BrainAPISession(creds, interactive_login_default=interactive)
+
+
+def _load_idea_spec(payload: Any) -> IdeaSpec:
+    if isinstance(payload, dict):
+        return _validate_idea_payload(payload)
+    if isinstance(payload, list) and payload:
+        return _validate_idea_payload(payload[0])
+    raise ValueError("Idea input must be a JSON object or non-empty JSON array")
+
+
+def _validate_idea_payload(payload: dict[str, Any]) -> IdeaSpec:
+    return IdeaSpec.model_validate(payload)
+
+
+def _save_retrieval_pack(path: str | None, pack: RetrievalPack) -> None:
+    if not path:
+        return
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(pack.model_dump_json(indent=2), encoding="utf-8")
+
+
+def configure_default_meta_dir() -> Path:
+    return AppConfig().paths.meta_dir
 
 
 if __name__ == "__main__":
