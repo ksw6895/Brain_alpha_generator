@@ -2,6 +2,10 @@
 
 기준일: 2026-02-12
 
+## 0) 상태 요약 (업데이트)
+- step-20 백엔드 범위(예산 강제, fallback, telemetry, `budget/kpi` API)는 완료.
+- F20 프론트 범위(Reactor HUD 3D, `reactor_status` API 연동)는 미완료이며 step 문서 기준 open item으로 유지.
+
 ## 1) 코드 변경 파일
 - `configs/llm_budget.json`
 - `src/brain_agent/generation/budget.py`

@@ -19,6 +19,16 @@
 - repair loop를 자동화하여 통과본만 simulation queue에 넣는다.
 - 변이 계보(parent -> child)와 백테스트 진행 상태를 이벤트로 기록한다.
 
+### 1.3 실측 백테스트 응답 기반 설계 원칙
+- Arena/Evolutionary UI를 구현하기 전에 실제 백테스트 응답(JSON)과 이벤트 타임라인을 먼저 확보한다.
+- 예시 알파를 실제로 시뮬레이션하고 완료까지 기다린 다음, 응답 필드/진행률 패턴/지연시간 분포를 분석해 프론트 이벤트 계약을 고정한다.
+- 즉, step-21의 시각화는 mock payload가 아니라 실제 응답을 기준으로 설계한다.
+
+권장 사전 수집:
+1. 예시 알파 제출 후 `simulation.completed` payload 원문 확보
+2. `evaluation.completed` 직후 scorecard 필드 매핑 확인
+3. parent-child mutation 이벤트와 시간축 정렬 가능 여부 확인
+
 ## 2) 실행 플로우 (강제 순서)
 1. Alpha Maker 출력 수신
 2. 파서 실패 시 포맷 복구 단계 우선 실행(JSON 구조만 복구)
@@ -50,20 +60,39 @@
 - 실패본은 이유/시도 횟수와 함께 로그 저장
 - exploit/explore lane 태그를 큐 메타에 보존한다
 
-### 3.4 프론트 동시 적용 범위 (F21: Arena / Evolutionary Tree)
-- Arena (백테스트):
-  - `simulation.enqueued`
-  - `simulation.started`
-  - `simulation.completed`
-  - `evaluation.completed`
-- Evolutionary Tree (변이 계보):
-  - `mutation.generated` 이벤트 payload에 `parent_candidate_id`, `child_candidate_id`, `mutation_type` 저장
-  - score가 낮아 폐기된 후보는 `candidate.dropped` 이벤트로 표기
-- Brain Terminal:
-  - `validation.retry_started`, `validation.retry_failed`, `validation.retry_passed`를 순서대로 송출
-- 권장 렌더링:
-  - Arena: Recharts/Tremor + Framer Motion
-  - Evolutionary Tree: react-force-graph (2D 또는 3D)
+### 3.4 프론트 동시 적용 범위 (F21: Neural Genesis Lab)
+- 컨셉: `Living Neural Network`
+- 정적인 트리가 아니라, 아이디어의 탄생/수정/사멸을 우주(Galaxy)처럼 표현한다.
+
+#### 3.4.1 Data Synapse Map (마인드맵 수색 시각화)
+- 구현: `react-force-graph-3d`
+- 동작:
+  - 화면 중앙에 `Brain Core`(대형 3D 구체)를 배치
+  - 에이전트가 `Open`, `Close`, `Volume` 등 데이터 필드를 검토하면 해당 노드가 발광하고 코어와 레이저 링크로 연결
+  - `Data Searching...` 단계에서 다수 노드를 스캔하는 빔 이펙트 표시
+  - 미사용 노드는 dimmed, 채택 노드는 네온 컬러 활성화
+
+#### 3.4.2 Evolutionary Galaxy (변이 계보도)
+- 구현: `React Three Fiber + Particle System`
+- 동작:
+  - 각 `CandidateAlpha`를 우주 공간의 별(Star)로 시각화
+  - Parent -> Child: 부모 별에서 혜성 꼬리 형태로 자식 별 탄생 애니메이션
+  - Validation 상태:
+    - Passed: 청록/초록 안정 발광
+    - Failed: 붉은 폭발 후 잿빛 잔해로 전환
+    - Repair Loop: 별 주변에 수리 드론 파티클 회전, 성공 시 재점등
+
+#### 3.4.3 Arena Spectator (백테스트 실시간 중계)
+- 구현: `Visx` 또는 Custom WebGL Shader Line
+- 동작:
+  - 레이싱 HUD 스타일의 PnL 실시간 라인 렌더링
+  - 수익 구간은 금빛 파티클, 손실 구간은 붉은 비네팅 경고
+  - 하단 터미널에 `LOG: Alpha #402 execution... Sharpe Ratio calculating...` 스트림 출력
+
+#### 3.4.4 권장 시각 언어
+- Color: `#050505`(Deep Space Black), `#00f3ff`(Neon Cyan), `#0aff00`(Matrix Green), `#ff0055`(Alert Red)
+- Typography: `JetBrains Mono` 또는 `Orbitron`
+- Motion: `Framer Motion + AnimatePresence`, 수치 변경은 CountUp 애니메이션 적용
 
 ### 3.5 코드 연결 포인트 (현재 구현 기준)
 아래 파일은 이미 동작 중인 경로이므로, 이벤트 삽입 시 우선 수정 대상으로 본다.
