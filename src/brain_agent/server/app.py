@@ -14,6 +14,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from ..config import AppConfig
@@ -40,6 +41,23 @@ def create_app(
     llm_budget = load_llm_budget("configs/llm_budget.json")
 
     app = FastAPI(title="Brain Agent Live Stream", version="0.1.0")
+    cors_origins = [
+        origin.strip()
+        for origin in str(
+            os.getenv(
+                "BRAIN_UI_ORIGINS",
+                "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
+            )
+        ).split(",")
+        if origin.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins or ["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.store = sqlite_store
     app.state.event_bus = bus
     reactor_hud_path = Path("docs/artifacts/step-20/reactor_hud.html")

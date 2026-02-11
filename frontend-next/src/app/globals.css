@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-ink: #050711;
+  --bg-surface: #0c1223;
+  --bg-surface-2: #121a31;
+  --line-soft: rgba(118, 132, 184, 0.33);
+  --text-main: #e9eeff;
+  --text-muted: #9aa8d3;
+  --c-cyan: #73eaff;
+  --c-fuchsia: #e772ff;
+  --c-mint: #62ffe7;
+  --c-amber: #ffbe5f;
+}
+
+body {
+  color: var(--text-main);
+  background:
+    radial-gradient(circle at 12% 16%, rgba(29, 143, 173, 0.28), transparent 42%),
+    radial-gradient(circle at 84% 74%, rgba(157, 59, 212, 0.24), transparent 40%),
+    linear-gradient(165deg, var(--bg-ink) 0%, #090d1b 48%, #060913 100%);
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(121, 147, 206, 0.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(121, 147, 206, 0.09) 1px, transparent 1px);
+    background-size: 34px 34px;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-slate-700/55 bg-slate-900/55 backdrop-blur-md;
+  }
+
+  .panel-head {
+    @apply flex items-center justify-between text-xs uppercase tracking-[0.18em] text-slate-200/90;
+  }
+
+  .panel-meta {
+    @apply text-[10px] text-slate-400/90;
+  }
+
+  .input-base {
+    @apply rounded-lg border border-slate-600/70 bg-slate-950/65 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-400/75;
+  }
+
+  .btn-base {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-500/65 bg-cyan-600/20 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/25;
+  }
+
+  .btn-alt {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-fuchsia-500/60 bg-fuchsia-500/15 px-3 py-2 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-500/25;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-slate-600/70 bg-slate-900/75 px-2.5 py-1 text-xs uppercase tracking-[0.12em] text-slate-200/95;
+  }
+}

@@ -122,6 +122,22 @@ Neural Genesis Lab(로컬 프로토타입) 열기:
 - 기본 권장: `run-quick-validation-loop` (idea -> retrieval -> validation-loop를 1회 실행)
 - `Auto Stream Run`을 켜면 완료된 run_id를 자동으로 붙여 스트리밍 연결
 
+Next.js Neural Reactor HUD(신규 프론트) 실행:
+```bash
+# 터미널 A (백엔드)
+BRAIN_UI_ORIGINS=http://127.0.0.1:3000,http://localhost:3000 \
+PYTHONPATH=src python3 -m brain_agent.cli serve-live-events --host 127.0.0.1 --port 8765
+
+# 터미널 B (프론트)
+cd frontend-next
+cp env.local.example .env.local
+npm install
+npm run dev
+```
+- 브라우저: `http://127.0.0.1:3000`
+- 프론트 `Command Console`에서 `/api/control/jobs`를 호출해 아이디어/알파/validation-loop를 실행
+- 실시간 이벤트는 `/ws/live`를 사용해 스트리밍
+
 > biometrics 인증이 필요한 계정이면 위 스크립트가 URL을 안내하고 터미널에서 대기합니다.
 > 브라우저에서 인증 완료 후 Enter를 누르면 진행됩니다.
 > 세션 쿠키(`~/.brain_session_cookies`)를 재사용하므로 연속 실행 시 재인증이 줄어듭니다.
