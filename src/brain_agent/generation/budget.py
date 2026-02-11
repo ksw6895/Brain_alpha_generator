@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -634,6 +635,213 @@ def build_kpi_payload(
     }
 
 
+def build_reactor_status_payload(
+    *,
+    run_id: str,
+    run_events: list[dict[str, Any]],
+    all_events: list[dict[str, Any]],
+    budget: LLMBudgetConfig,
+) -> dict[str, Any]:
+    """Build step-20 Reactor Core HUD payload (REST/WS friendly)."""
+    budget_payload = build_budget_console_payload(
+        run_id=run_id,
+        run_events=run_events,
+        all_events=all_events,
+        budget=budget,
+    )
+    kpi_payload = build_kpi_payload(
+        run_id=run_id,
+        run_events=run_events,
+        budget=budget,
+    )
+
+    run_usage_events = [
+        event
+        for event in run_events
+        if str(event.get("event_type") or "") == "llm.usage_point"
+    ]
+
+    cost_series: list[dict[str, Any]] = []
+    usage_window: list[tuple[datetime, int, float]] = []
+    for event in run_usage_events:
+        payload = event.get("payload")
+        detail = payload if isinstance(payload, dict) else {}
+        ts = str(event.get("created_at") or "")
+        prompt_tokens = _to_int(detail.get("prompt_tokens"))
+        completion_tokens = _to_int(detail.get("completion_tokens"))
+        total_tokens = _to_int(detail.get("total_tokens"))
+        if total_tokens <= 0:
+            total_tokens = max(0, prompt_tokens + completion_tokens)
+        cost_usd = _to_float(detail.get("estimated_cost_usd"))
+        cost_series.append(
+            {
+                "ts": ts,
+                "value": round(cost_usd, 8),
+                "tokens": total_tokens,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+            }
+        )
+        parsed = _parse_iso_ts(ts)
+        if parsed is not None:
+            usage_window.append((parsed, total_tokens, cost_usd))
+
+    usage_window = usage_window[-6:]
+    velocity_tokens_per_sec = 0.0
+    velocity_cost_usd_per_min = 0.0
+    if len(usage_window) >= 2:
+        start_ts = usage_window[0][0]
+        end_ts = usage_window[-1][0]
+        duration_sec = max(1.0, (end_ts - start_ts).total_seconds())
+        token_sum = sum(max(0, row[1]) for row in usage_window)
+        cost_sum = sum(max(0.0, row[2]) for row in usage_window)
+        velocity_tokens_per_sec = token_sum / duration_sec
+        velocity_cost_usd_per_min = (cost_sum / duration_sec) * 60.0
+
+    gauges = budget_payload.get("gauges")
+    gauge_map = gauges if isinstance(gauges, dict) else {}
+    prompt_gauge = gauge_map.get("prompt_tokens") if isinstance(gauge_map.get("prompt_tokens"), dict) else {}
+    completion_gauge = (
+        gauge_map.get("completion_tokens") if isinstance(gauge_map.get("completion_tokens"), dict) else {}
+    )
+    batch_gauge = gauge_map.get("batch_tokens") if isinstance(gauge_map.get("batch_tokens"), dict) else {}
+    day_gauge = gauge_map.get("day_tokens") if isinstance(gauge_map.get("day_tokens"), dict) else {}
+
+    prompt_pressure = _safe_ratio(_to_float(prompt_gauge.get("value")), _to_float(prompt_gauge.get("limit")))
+    completion_pressure = _safe_ratio(
+        _to_float(completion_gauge.get("value")),
+        _to_float(completion_gauge.get("limit")),
+    )
+    batch_pressure = _safe_ratio(_to_float(batch_gauge.get("value")), _to_float(batch_gauge.get("limit")))
+    day_pressure = _safe_ratio(_to_float(day_gauge.get("value")), _to_float(day_gauge.get("limit")))
+    pressure = max(prompt_pressure, completion_pressure, batch_pressure, day_pressure)
+
+    flags = budget_payload.get("flags")
+    flag_map = dict(flags) if isinstance(flags, dict) else {}
+    fallback_timeline = (
+        budget_payload.get("series", {}).get("fallback_timeline")
+        if isinstance(budget_payload.get("series"), dict)
+        else []
+    )
+    fallback_items = fallback_timeline if isinstance(fallback_timeline, list) else []
+
+    protection_mode = bool(
+        flag_map.get("budget_blocked")
+        or flag_map.get("over_prompt_budget")
+        or flag_map.get("over_completion_budget")
+        or flag_map.get("over_batch_budget")
+        or flag_map.get("over_day_budget")
+        or len(fallback_items) > 0
+    )
+
+    if flag_map.get("budget_blocked"):
+        reactor_state = "blocked"
+    elif pressure >= 1.0:
+        reactor_state = "critical"
+    elif protection_mode or pressure >= 0.85:
+        reactor_state = "warning"
+    else:
+        reactor_state = "stable"
+
+    lane_gauge = kpi_payload.get("gauges")
+    lane_map = lane_gauge if isinstance(lane_gauge, dict) else {}
+    explore_info = lane_map.get("explore_ratio") if isinstance(lane_map.get("explore_ratio"), dict) else {}
+    explore_ratio = _to_float(explore_info.get("value"))
+    if explore_ratio <= 0:
+        latest_lane_ratio = _latest_lane_ratio(run_events)
+        explore_ratio = _to_float(latest_lane_ratio.get("explore_ratio"))
+    exploit_ratio = max(0.0, min(1.0, 1.0 - explore_ratio))
+
+    pressure_series = [
+        {
+            "ts": row.get("ts"),
+            "value": _safe_ratio(_to_float(row.get("value")), _to_float(row.get("limit"))),
+        }
+        for row in (budget_payload.get("series", {}).get("prompt_tokens") or [])
+        if isinstance(row, dict)
+    ]
+    pressure_series = pressure_series[-120:]
+
+    latest_ts = _latest_event_timestamp(run_events) or utc_now_iso()
+    fallback_latest = fallback_items[-1] if fallback_items else {}
+    latest_cost = _to_float(cost_series[-1].get("value")) if cost_series else 0.0
+
+    reactor_payload = {
+        "core": {
+            "state": reactor_state,
+            "temperature": round(pressure, 4),
+            "pressure": round(pressure, 4),
+            "protection_mode": protection_mode,
+        },
+        "token_gauge": {
+            "prompt_tokens": _to_int(prompt_gauge.get("value")),
+            "prompt_limit": _to_int(prompt_gauge.get("limit")),
+            "completion_tokens": _to_int(completion_gauge.get("value")),
+            "completion_limit": _to_int(completion_gauge.get("limit")),
+            "batch_tokens": _to_int(batch_gauge.get("value")),
+            "batch_limit": _to_int(batch_gauge.get("limit")),
+            "day_tokens": _to_int(day_gauge.get("value")),
+            "day_limit": _to_int(day_gauge.get("limit")),
+        },
+        "cost_pulse": {
+            "latest_cost_usd": round(latest_cost, 8),
+            "velocity_cost_usd_per_min": round(velocity_cost_usd_per_min, 8),
+        },
+        "exploit_explore_radar": {
+            "exploit_ratio": round(exploit_ratio, 4),
+            "explore_ratio": round(explore_ratio, 4),
+            "target_explore_ratio": round(max(0.0, float(budget.explore_ratio)), 4),
+            "scanner_text": "Sector 7 (Volatility Index) Scanning...",
+        },
+        "fallback": {
+            "count": int(len(fallback_items)),
+            "latest_phase": str(fallback_latest.get("phase") or "none"),
+            "latest_factor": _to_float(fallback_latest.get("factor")),
+        },
+        "render_hints": {
+            "target_fps": 60,
+            "interpolation": "linear",
+            "sample_interval_ms": 500,
+        },
+    }
+
+    flag_map["protection_mode"] = protection_mode
+    flag_map["reactor_state"] = reactor_state
+
+    gauges_out = dict(gauge_map)
+    gauges_out["pressure"] = {"value": round(pressure, 4), "limit": 1.0}
+    gauges_out["velocity_tokens_per_sec"] = {"value": round(velocity_tokens_per_sec, 6), "limit": None}
+    gauges_out["velocity_cost_usd_per_min"] = {"value": round(velocity_cost_usd_per_min, 8), "limit": None}
+
+    series_out = dict(budget_payload.get("series") if isinstance(budget_payload.get("series"), dict) else {})
+    series_out["cost_pulse"] = cost_series[-180:]
+    series_out["pressure"] = pressure_series
+    series_out["explore_ratio"] = (
+        kpi_payload.get("series", {}).get("explore_ratio")
+        if isinstance(kpi_payload.get("series"), dict)
+        else []
+    )
+    series_out["coverage"] = (
+        kpi_payload.get("series", {}).get("coverage")
+        if isinstance(kpi_payload.get("series"), dict)
+        else []
+    )
+    series_out["novelty"] = (
+        kpi_payload.get("series", {}).get("novelty")
+        if isinstance(kpi_payload.get("series"), dict)
+        else []
+    )
+
+    return {
+        "run_id": run_id,
+        "as_of": latest_ts,
+        "series": series_out,
+        "gauges": gauges_out,
+        "flags": flag_map,
+        "reactor": reactor_payload,
+    }
+
+
 def _evaluate_budget(
     *,
     prompt: str,
@@ -1045,3 +1253,59 @@ def _to_float(value: Any) -> float:
         return float(value)
     except Exception:
         return 0.0
+
+
+def _safe_ratio(value: float, limit: float) -> float:
+    if limit <= 0:
+        return 0.0
+    return max(0.0, float(value) / float(limit))
+
+
+def _parse_iso_ts(raw: str) -> datetime | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except Exception:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _latest_event_timestamp(events: Iterable[dict[str, Any]]) -> str:
+    latest = ""
+    latest_dt: datetime | None = None
+    for event in events:
+        ts = str(event.get("created_at") or "")
+        parsed = _parse_iso_ts(ts)
+        if parsed is None:
+            continue
+        if latest_dt is None or parsed > latest_dt:
+            latest_dt = parsed
+            latest = ts
+    return latest
+
+
+def _latest_lane_ratio(events: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    latest: dict[str, Any] = {}
+    latest_dt: datetime | None = None
+    for event in events:
+        event_type = str(event.get("event_type") or "")
+        if not event_type.startswith("budget."):
+            continue
+        payload = event.get("payload")
+        detail = payload if isinstance(payload, dict) else {}
+        lane_ratio = detail.get("lane_ratio")
+        if not isinstance(lane_ratio, dict):
+            continue
+        ts = str(event.get("created_at") or "")
+        parsed = _parse_iso_ts(ts)
+        if parsed is None:
+            continue
+        if latest_dt is None or parsed > latest_dt:
+            latest_dt = parsed
+            latest = lane_ratio
+    return latest

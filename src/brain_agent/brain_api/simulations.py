@@ -55,7 +55,11 @@ def get_alpha_recordsets(session: BrainAPISession, alpha_id: str) -> list[str]:
     if r.status_code // 100 != 2:
         return []
 
-    payload = r.json()
+    try:
+        payload = r.json()
+    except Exception:
+        # Some accounts return empty body/non-JSON despite 2xx.
+        return []
     if isinstance(payload, list):
         return [str(x) for x in payload]
     if isinstance(payload, dict):
@@ -80,7 +84,10 @@ def get_recordset(session: BrainAPISession, alpha_id: str, recordset_name: str) 
             f"GET /alphas/{alpha_id}/recordsets/{recordset_name} failed: "
             f"{r.status_code} {r.text}"
         )
-    return r.json()
+    try:
+        return r.json()
+    except Exception:
+        return {"recordset_name": recordset_name, "raw_text": r.text}
 
 
 def run_single_simulation(session: BrainAPISession, payload: dict[str, Any]) -> dict[str, Any]:

@@ -23,6 +23,8 @@
 | NC-012 | architecture/current-workflow-map.md 정합성 최신화(현재 코드 이벤트/저장 경로 + step-17~21/F-Track 병렬 흐름 반영) | DONE | Codex | architecture/current-workflow-map.md | 2026-02-10 |
 | NC-013 | step-19 구현 완료 후 문서 동기화(DoD 체크/로드맵 상태/구현 보고서 반영) | DONE | Codex | docs/steps/README.md, docs/steps/step-19.md, docs/artifacts/step-19/implementation_report.md, architecture/current-workflow-map.md | 2026-02-11 |
 | NC-014 | OpenAI SDK/Structured Output 반영에 따른 step-19 문서/가이드 업데이트 | DONE | Codex | README.md, docs/steps/step-19.md, docs/artifacts/step-19/implementation_report.md, architecture/current-workflow-map.md, .env.example | 2026-02-11 |
+| NC-015 | step-20 최종 문서 동기화(reactor_status/HUD/API/실측 백테스트 반영) 및 step-21 실측 제약 보정 | DONE | Codex | docs/steps/step-20.md, docs/steps/step-21.md, docs/steps/README.md, docs/artifacts/step-20/implementation_report.md, data/probes/step20/* | 2026-02-12 |
+| NC-016 | step-20 실측 재실행(rerun) 저장 성공본 반영 및 step-21 payload 매핑 보정(`is/train/test/checks`) | DONE | Codex | data/probes/step20/alpha_result_probe_rerun.json, data/probes/step20/simulation_events_probe_rerun.json, docs/steps/step-20.md, docs/steps/step-21.md, docs/artifacts/step-20/implementation_report.md | 2026-02-12 |
 
 ## 업데이트 로그
 - 2026-02-10: 초안 생성 (Step 0 완료 후 최초 등록)
@@ -35,3 +37,5 @@
 - 2026-02-10: NC-012 완료 (architecture 문서를 현재 코드/계획 정합성 기준으로 업데이트)
 - 2026-02-11: NC-013 완료 (step-19 구현 결과를 step 문서/로드맵/아키텍처 문서/구현 리포트에 동기화)
 - 2026-02-11: NC-014 완료 (OpenAI SDK/Structured Output 반영으로 step-19 문서/환경가이드 업데이트)
+- 2026-02-12: NC-015 완료 (step-20 최종 구현/실측 결과 반영 + step-21 실측 제약 보정)
+- 2026-02-12: NC-016 완료 (실측 rerun 저장 성공본으로 step-20/21 문서 보정)

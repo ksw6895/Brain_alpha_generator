@@ -93,6 +93,10 @@ PYTHONPATH=src python3 -m brain_agent.cli serve-live-events --host 127.0.0.1 --p
 예산/품질 조회 API:
 - `GET /api/runs/{run_id}/budget`
 - `GET /api/runs/{run_id}/kpi`
+- `GET /api/runs/{run_id}/reactor_status`
+
+Reactor HUD(로컬 프로토타입) 열기:
+- 서버 실행 후 `http://127.0.0.1:8765/ui/reactor?run_id=<RUN_ID>`
 
 > biometrics 인증이 필요한 계정이면 위 스크립트가 URL을 안내하고 터미널에서 대기합니다.
 > 브라우저에서 인증 완료 후 Enter를 누르면 진행됩니다.

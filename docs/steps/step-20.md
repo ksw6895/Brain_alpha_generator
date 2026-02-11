@@ -214,15 +214,38 @@ PYTHONPATH=src python3 -m brain_agent.cli estimate-prompt-cost \
 - [x] 리서치 품질 KPI(coverage/novelty)가 수집됨
 - [x] 대시보드용 telemetry 이벤트 계약이 고정됨
 - [x] run 단위 budget/kpi 조회 API가 정의됨
-- [ ] `GET /api/runs/{run_id}/reactor_status` API 구현
-- [ ] Reactor Core HUD(3D) 프론트 구현(R3F + Bloom + Particle)
-- [ ] Cost Pulse / Exploit-Explore Radar 실시간 연동 구현
-- [ ] WebSocket 60fps 보간 렌더러(프론트) 구현
-- [ ] 실측 백테스트 응답 기반 `reactor_status` 필드 보정 완료
+- [x] `GET /api/runs/{run_id}/reactor_status` API 구현
+- [x] Reactor Core HUD(3D) 프론트 구현(Three.js 기반 로컬 HUD 프로토타입)
+- [x] Cost Pulse / Exploit-Explore Radar 실시간 연동 구현
+- [x] WebSocket 60fps 보간 렌더러(프론트) 구현
+- [x] 실측 백테스트 응답 기반 `reactor_status` 필드 보정 완료
 
 ### 6.1 현재 상태(명시)
-- step-20 백엔드 budget gate/telemetry/API(`budget`,`kpi`)는 완료.
-- step-20 프론트 HUD(`reactor_status` 포함)는 **아직 미완료**.
+- step-20 백엔드 budget gate/telemetry/API(`budget`,`kpi`,`reactor_status`)는 완료.
+- step-20 프론트 HUD 프로토타입(`docs/artifacts/step-20/reactor_hud.html`) + WS 연동이 완료됐다.
+- 실측 백테스트 응답 기반으로 `reactor_status`의 `core.state`, `pressure`, `cost_pulse`, `fallback` 필드를 보정했다.
+
+### 6.2 실측 백테스트 기반 보정 결과 (2026-02-11 UTC)
+- 실측 1차(이벤트 기반 복구):
+  - `event_type=simulation_completed`
+  - `alpha_id=j2l8Vzv9`
+  - `created_at=2026-02-11T16:22:51.127439+00:00`
+  - `metrics={sharpe:-0.64, fitness:-0.35, turnover:0.1913, drawdown:0.6091, coverage:null}`
+- 실측 2차(정식 파일 저장 성공):
+  - 파일: `data/probes/step20/alpha_result_probe_rerun.json`
+  - `alpha_id=O0w8RPJd`
+  - `created_at=2026-02-11T16:35:10.180880+00:00`
+  - `summary_metrics={sharpe:-0.63, fitness:-0.35, turnover:0.1856, drawdown:0.6017, coverage:null}`
+  - `raw_payload`에 `is/train/test/checks` 구조가 포함됨을 확인
+- 확인된 제약:
+  1. 시뮬레이션은 완료되지만 계정/권한에 따라 recordsets endpoint가 빈 본문(non-JSON)을 반환할 수 있다.
+  2. 따라서 HUD/Arena는 recordset 부재를 fatal로 처리하지 않고, 우선 `simulation_completed.metrics` 기반으로 1차 상태를 표시해야 한다.
+  3. `coverage`는 null 가능하므로 gauge 계산 시 null-safe 처리(0 대체 또는 N/A 표시)가 필요하다.
+- 관련 보강 코드:
+  - `src/brain_agent/brain_api/simulations.py`: recordsets JSON 파싱 실패 시 안전 폴백
+  - `src/brain_agent/simulation/runner.py`: recordsets 실패를 non-fatal로 처리하고 결과 저장 지속
+  - `src/brain_agent/generation/budget.py`: `build_reactor_status_payload` 추가(velocity/pressure/protection_mode)
+  - `src/brain_agent/server/app.py`: `/api/runs/{run_id}/reactor_status`, `/ws/live?include_reactor=1`, `/ui/reactor`
 
 ## 7) 다음 step 인계
 - step-21은 budget 레이어를 통과한 생성 결과만 받아 validation-first loop를 완성한다.

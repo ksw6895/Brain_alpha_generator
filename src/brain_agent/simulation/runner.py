@@ -33,7 +33,7 @@ class SimulationRunner:
     def run_candidate(self, candidate: CandidateAlpha) -> AlphaResult | None:
         """Run one candidate unless already simulated."""
         expression = _candidate_expression(candidate)
-        settings = candidate.simulation_settings.model_dump(mode="python")
+        settings = _simulation_payload(candidate)
         normalized_expression = normalize_expression(expression)
         fp = fingerprint_settings_expression(settings, normalized_expression)
 
@@ -61,7 +61,22 @@ class SimulationRunner:
             normalized_expression=normalized_expression,
             settings=settings,
         )
-        result.recordsets_saved = self._fetch_and_save_recordsets(result.alpha_id)
+        try:
+            result.recordsets_saved = self._fetch_and_save_recordsets(result.alpha_id)
+        except Exception as exc:
+            self.store.append_event(
+                "simulation.recordsets_unavailable",
+                {
+                    "idea_id": candidate.idea_id,
+                    "alpha_id": result.alpha_id,
+                    "run_id": f"simulation-{candidate.idea_id}",
+                    "stage": "simulation",
+                    "message": "Recordset fetch skipped due to non-fatal error",
+                    "severity": "warn",
+                    "payload": {"error": str(exc)},
+                },
+            )
+            result.recordsets_saved = []
         self.store.save_alpha_result(result)
         return result
 
@@ -77,7 +92,7 @@ class SimulationRunner:
 
         for candidate in candidates:
             expression = _candidate_expression(candidate)
-            settings = candidate.simulation_settings.model_dump(mode="python")
+            settings = _simulation_payload(candidate)
             normalized_expression = normalize_expression(expression)
             fp = fingerprint_settings_expression(settings, normalized_expression)
             if self.store.has_fingerprint(fp):
@@ -123,9 +138,24 @@ class SimulationRunner:
                 idea_id=candidate.idea_id,
                 expression=_candidate_expression(candidate),
                 normalized_expression=normalized,
-                settings=candidate.simulation_settings.model_dump(mode="python"),
+                settings=_simulation_payload(candidate),
             )
-            result.recordsets_saved = self._fetch_and_save_recordsets(result.alpha_id)
+            try:
+                result.recordsets_saved = self._fetch_and_save_recordsets(result.alpha_id)
+            except Exception as exc:
+                self.store.append_event(
+                    "simulation.recordsets_unavailable",
+                    {
+                        "idea_id": candidate.idea_id,
+                        "alpha_id": result.alpha_id,
+                        "run_id": f"simulation-{candidate.idea_id}",
+                        "stage": "simulation",
+                        "message": "Recordset fetch skipped due to non-fatal error",
+                        "severity": "warn",
+                        "payload": {"error": str(exc)},
+                    },
+                )
+                result.recordsets_saved = []
             self.store.save_alpha_result(result)
             out.append(result)
 
@@ -227,11 +257,23 @@ def _recordset_path(base_dir: str, alpha_id: str, name: str) -> Path:
 
 def fingerprint_for_candidate(candidate: CandidateAlpha) -> str:
     """Exported helper for dedupe checks and tests."""
-    settings = candidate.simulation_settings.model_dump(mode="python")
+    settings = _simulation_payload(candidate)
     expression = normalize_expression(_candidate_expression(candidate))
     return fingerprint_settings_expression(settings, expression)
 
 
 def canonical_payload_for_candidate(candidate: CandidateAlpha) -> str:
     """Exported helper for debugging canonical payload generation."""
-    return canonical_json(candidate.simulation_settings.model_dump(mode="python"))
+    return canonical_json(_simulation_payload(candidate))
+
+
+def _simulation_payload(candidate: CandidateAlpha) -> dict[str, Any]:
+    """Build simulation payload while dropping null optional expression keys.
+
+    Brain API may reject explicit null values for optional fields (e.g. selection/combo).
+    """
+    payload = candidate.simulation_settings.model_dump(mode="python", exclude_none=True)
+    for key in ("regular", "selection", "combo"):
+        if payload.get(key) is None:
+            payload.pop(key, None)
+    return payload

@@ -24,8 +24,25 @@
 - 예시 알파를 실제로 시뮬레이션하고 완료까지 기다린 다음, 응답 필드/진행률 패턴/지연시간 분포를 분석해 프론트 이벤트 계약을 고정한다.
 - 즉, step-21의 시각화는 mock payload가 아니라 실제 응답을 기준으로 설계한다.
 
+실측 관측(2026-02-11 UTC, alpha_id=`j2l8Vzv9`, `O0w8RPJd`):
+- 실제 저장 이벤트는 현재 코드 기준 `simulation_completed`(underscore) 형태로 기록된다.
+- metrics payload 예시:
+  - `sharpe=-0.64` (rerun: `-0.63`)
+  - `fitness=-0.35`
+  - `turnover=0.1913` (rerun: `0.1856`)
+  - `drawdown=0.6091` (rerun: `0.6017`)
+  - `coverage=null` (null 가능)
+- 계정/권한에 따라 `/alphas/{id}/recordsets`가 2xx + non-JSON(빈 본문)으로 내려올 수 있다.
+- 정식 저장 파일(`data/probes/step20/alpha_result_probe_rerun.json`) 기준으로는 `raw_payload.is/train/test/checks`가 포함되므로,
+  Arena/Evaluator UI는 초기 버전에서 `raw_payload.is` 중심으로 매핑하고 `train/test`는 확장 탭으로 분리하는 것이 안전하다.
+
+따라서 step-21의 Arena 실시간성 계약은 아래처럼 현실적으로 잡는다.
+1. 1차 필수: `simulation.enqueued|simulation.started|simulation_completed` 단계 이벤트
+2. 2차 선택: recordset 기반 PnL 스트리밍(가능 계정에서만)
+3. recordset 미지원/지연 시에도 `simulation_completed.metrics` 기반 요약 HUD는 반드시 표시
+
 권장 사전 수집:
-1. 예시 알파 제출 후 `simulation.completed` payload 원문 확보
+1. 예시 알파 제출 후 `simulation_completed`(또는 alias `simulation.completed`) payload 원문 확보
 2. `evaluation.completed` 직후 scorecard 필드 매핑 확인
 3. parent-child mutation 이벤트와 시간축 정렬 가능 여부 확인
 
@@ -105,6 +122,7 @@
 - scorecard 계산 직후 `evaluation.completed` 이벤트를 기록한다.
 4. `src/brain_agent/brain_api/simulations.py`
 - `poll_simulation()`에 progress callback 훅을 넣어 Arena 진행률 이벤트를 송출한다.
+- 단, 실 API에서 중간 진행률 필드가 안정적으로 내려오지 않는 경우가 있어 callback은 "있으면 활용, 없으면 단계 이벤트만" 전략으로 구현한다.
 
 ## 4) repair 규칙 (최소)
 1. Unknown operator/field
