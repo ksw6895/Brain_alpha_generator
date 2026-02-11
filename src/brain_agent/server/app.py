@@ -129,14 +129,14 @@ def create_app(
     def healthz() -> dict[str, bool]:
         return {"ok": True}
 
-    @app.get("/ui/reactor")
-    def reactor_hud() -> FileResponse | dict[str, Any]:
+    @app.get("/ui/reactor", response_model=None)
+    def reactor_hud() -> Any:
         if not reactor_hud_path.exists():
             return {"ok": False, "error": f"hud_not_found:{reactor_hud_path}"}
         return FileResponse(reactor_hud_path)
 
-    @app.get("/ui/neural-lab")
-    def neural_lab_hud() -> FileResponse | dict[str, Any]:
+    @app.get("/ui/neural-lab", response_model=None)
+    def neural_lab_hud() -> Any:
         if not neural_lab_path.exists():
             return {"ok": False, "error": f"hud_not_found:{neural_lab_path}"}
         return FileResponse(neural_lab_path)
